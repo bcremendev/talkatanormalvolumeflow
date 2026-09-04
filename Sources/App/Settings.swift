@@ -20,6 +20,8 @@ struct Shortcut: Codable, Equatable, Hashable {
     var modifiers: UInt64      // CGEventFlags raw value (only meaningful when !isModifierKey)
     var isModifierKey: Bool
     var name: String
+    /// Human-readable name (modifier keys are always named from the key code, so old saved names can't go stale).
+    var displayName: String { isModifierKey ? KeyNames.name(for: keyCode) : name }
 
     static let fn           = Shortcut(keyCode: 63, modifiers: 0, isModifierKey: true, name: "Fn / Globe 🌐")
     static let rightOption  = Shortcut(keyCode: 61, modifiers: 0, isModifierKey: true, name: "Right ⌥ Option")
@@ -79,11 +81,8 @@ struct SettingsData: Codable, Equatable {
     var shortcut: Shortcut = .fn
     var mode: ActivationMode = .hold
     var launchAtLogin: Bool = false
-    var showOverlay: Bool = true
     var playSounds: Bool = true
     var trailingSpace: Bool = true
-    var restoreClipboard: Bool = true
-    var insertMethod: InsertMethod = .paste
 
     var modelId: String = "small.en"
     var language: String = "en"          // "auto" or ISO code
@@ -91,15 +90,64 @@ struct SettingsData: Codable, Equatable {
     var removeFillers: Bool = true
     var fillerWords: [String] = ["um", "umm", "uh", "uhh", "uhm", "er", "erm", "hmm", "mm", "ah"]
     var voiceCommands: Bool = true
-    var smartCapitalization: Bool = true
     var replacements: [Replacement] = []
 
-    var ollamaEnabled: Bool = false
+    /// AI polish is recommended and on unless the user turns it off (`polishSkipped`); it only runs once downloaded (`polishReady`).
     var ollamaModel: String = "qwen2.5:3b"
-    var ollamaStyle: String = "Keep the speaker's voice. Only fix grammar, punctuation, remove filler words, and apply spoken self-corrections."
+    var polishReady: Bool = false
+    var polishSkipped: Bool = false
+    var ollamaEnabled: Bool { get { !polishSkipped } set { polishSkipped = !newValue } }
 
     var hasCompletedOnboarding: Bool = false
-    var historyEnabled: Bool = true
+
+    // Kept fixed (not user-facing) to keep the app simple.
+    var smartCapitalization: Bool { true }
+    var insertMethod: InsertMethod { .paste }
+    var restoreClipboard: Bool { true }
+    var showOverlay: Bool { true }
+    var historyEnabled: Bool { true }
+    var ollamaStyle: String { "Keep the speaker's voice. Only fix grammar and punctuation, remove filler words, and apply spoken self-corrections." }
+
+    init() {}
+
+    // Tolerant decoding: new fields get defaults instead of wiping the user's settings.
+    private enum K: String, CodingKey {
+        case shortcut, mode, launchAtLogin, playSounds, trailingSpace, modelId, language, removeFillers, fillerWords,
+             voiceCommands, replacements, ollamaModel, polishReady, polishSkipped, hasCompletedOnboarding
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        let d = SettingsData()
+        shortcut = try c.decodeIfPresent(Shortcut.self, forKey: .shortcut) ?? d.shortcut
+        mode = try c.decodeIfPresent(ActivationMode.self, forKey: .mode) ?? d.mode
+        launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
+        playSounds = try c.decodeIfPresent(Bool.self, forKey: .playSounds) ?? d.playSounds
+        trailingSpace = try c.decodeIfPresent(Bool.self, forKey: .trailingSpace) ?? d.trailingSpace
+        modelId = try c.decodeIfPresent(String.self, forKey: .modelId) ?? d.modelId
+        language = try c.decodeIfPresent(String.self, forKey: .language) ?? d.language
+        removeFillers = try c.decodeIfPresent(Bool.self, forKey: .removeFillers) ?? d.removeFillers
+        fillerWords = try c.decodeIfPresent([String].self, forKey: .fillerWords) ?? d.fillerWords
+        voiceCommands = try c.decodeIfPresent(Bool.self, forKey: .voiceCommands) ?? d.voiceCommands
+        replacements = try c.decodeIfPresent([Replacement].self, forKey: .replacements) ?? d.replacements
+        ollamaModel = try c.decodeIfPresent(String.self, forKey: .ollamaModel) ?? d.ollamaModel
+        polishReady = try c.decodeIfPresent(Bool.self, forKey: .polishReady) ?? d.polishReady
+        polishSkipped = try c.decodeIfPresent(Bool.self, forKey: .polishSkipped) ?? d.polishSkipped
+        hasCompletedOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? d.hasCompletedOnboarding
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: K.self)
+        try c.encode(shortcut, forKey: .shortcut); try c.encode(mode, forKey: .mode)
+        try c.encode(launchAtLogin, forKey: .launchAtLogin); try c.encode(playSounds, forKey: .playSounds)
+        try c.encode(trailingSpace, forKey: .trailingSpace); try c.encode(modelId, forKey: .modelId)
+        try c.encode(language, forKey: .language); try c.encode(removeFillers, forKey: .removeFillers)
+        try c.encode(fillerWords, forKey: .fillerWords); try c.encode(voiceCommands, forKey: .voiceCommands)
+        try c.encode(replacements, forKey: .replacements)
+        try c.encode(ollamaModel, forKey: .ollamaModel); try c.encode(polishReady, forKey: .polishReady)
+        try c.encode(polishSkipped, forKey: .polishSkipped); try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
+    }
+
+    /// True when polish should actually run on a dictation.
+    var polishActive: Bool { polishReady && !polishSkipped }
 }
 
 final class Settings: ObservableObject {

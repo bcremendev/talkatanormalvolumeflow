@@ -155,12 +155,11 @@ final class DictationController: ObservableObject {
                 return
             }
 
-            if settings.ollamaEnabled {
+            if settings.polishActive {
                 state = .processing("Polishing…")
                 let ollama = OllamaManager.shared
                 await ollama.ensureRunning()
-                if ollama.isReady, ollama.hasModel(settings.ollamaModel),
-                   let polished = await ollama.cleanup(text, model: settings.ollamaModel, style: settings.ollamaStyle) {
+                if ollama.isReady, let polished = await ollama.cleanup(text, model: settings.ollamaModel, style: settings.ollamaStyle) {
                     text = polished
                 }
             }

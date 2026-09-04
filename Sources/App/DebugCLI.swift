@@ -6,13 +6,14 @@ import Foundation
 enum DebugCLI {
     static func runIfRequested() -> Bool {
         let args = CommandLine.arguments
+        if args.contains("--polish-test") { polishTest(); return true }
         guard let i = args.firstIndex(of: "--transcribe"), i + 1 < args.count else { return false }
         let file = URL(fileURLWithPath: args[i + 1])
         var modelId = Settings.shared.data.modelId
         if let m = args.firstIndex(of: "--model"), m + 1 < args.count { modelId = args[m + 1] }
         let raw = args.contains("--raw")
 
-        let sem = DispatchSemaphore(value: 0)
+        var done = false
         Task {
             do {
                 let samples = try load16k(file)
@@ -31,11 +32,44 @@ enum DebugCLI {
             } catch {
                 FileHandle.standardError.write("error: \(error.localizedDescription)\n".data(using: .utf8)!)
             }
-            sem.signal()
+            done = true
         }
-        sem.wait()
+        while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
         WhisperEngine.shared.unloadSync()
         return true
+    }
+
+    /// `--polish-test`: starts the bundled Ollama exactly like the Home screen button, downloads the model if needed,
+    /// and polishes a sample sentence. Prints each stage.
+    static func polishTest() {
+        var done = false
+        let log: (String) -> Void = { FileHandle.standardError.write(($0 + "\n").data(using: .utf8)!) }
+        Task {
+            let o = OllamaManager.shared
+            let model = Settings.shared.data.ollamaModel
+            log("bundled binary: \(o.bundledBinary?.path ?? "NONE")")
+            var t = Date()
+            await o.ensureRunning()
+            log("ensureRunning -> \(await MainActor.run { o.status }) in \(String(format: "%.1f", Date().timeIntervalSince(t)))s")
+            guard o.isReady else { done = true; return }
+            if !o.hasModel(model) {
+                t = Date()
+                log("pulling \(model)…")
+                await o.pull(model: model)
+                log("pull -> \(await MainActor.run { o.status }) in \(String(format: "%.0f", Date().timeIntervalSince(t)))s")
+            }
+            t = Date(); await o.warmUp(model: model); log("warmUp \(String(format: "%.1f", Date().timeIntervalSince(t)))s")
+            let sample = "so um I was thinking we should move the meeting to Tuesday, no wait, Wednesday afternoon and and let the whole team know.\nAlso can you add John, sorry, Jen to the invite."
+            t = Date()
+            let out = await o.cleanup(sample, model: model, style: Settings.shared.data.ollamaStyle)
+            log("cleanup \(String(format: "%.1f", Date().timeIntervalSince(t)))s")
+            print("IN : \(sample.replacingOccurrences(of: "\n", with: " ⏎ "))")
+            print("OUT: \(out?.replacingOccurrences(of: "\n", with: " ⏎ ") ?? "nil (fell back to rules)")")
+            done = true
+        }
+        // Pump the main run loop so MainActor work can run while we wait.
+        while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        OllamaManager.shared.stop()
     }
 
     static func load16k(_ url: URL) throws -> [Float] {

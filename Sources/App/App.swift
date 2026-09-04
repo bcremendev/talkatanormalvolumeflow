@@ -38,9 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let launchedAtLogin = NSAppleEventManager.shared().currentAppleEvent?.eventID == kAEOpenApplication
             && NSAppleEventManager.shared().currentAppleEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
         if !launchedAtLogin || !s.hasCompletedOnboarding || !started || !Permissions.microphoneGranted {
-            showMain(page: .home)
+            var page: Page = .home
+            if let i = CommandLine.arguments.firstIndex(of: "--page"), i + 1 < CommandLine.arguments.count,
+               let p = Page(rawValue: CommandLine.arguments[i + 1]) { page = p }   // for screenshots/testing
+            showMain(page: page)
         }
-        if s.ollamaEnabled { Task { await OllamaManager.shared.ensureRunning() } }
+        Task { await OllamaManager.shared.prepareIfActive() }
 
         // Re-arm the hotkey tap once Accessibility is granted (polls while not running).
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -97,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         let title: String
         switch c.state {
-        case .idle: title = "Ready · \(s.shortcut.name) (\(s.mode == .hold ? "hold" : "toggle"))"
+        case .idle: title = "Ready · \(s.shortcut.displayName) (\(s.mode == .hold ? "hold" : "toggle"))"
         case .recording: title = "Listening…"
         case .processing(let m): title = m
         case .notice(let m): title = m
@@ -112,46 +115,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         menu.addItem(withTitle: c.isRecording ? "Stop & Transcribe" : "Start Dictation", action: #selector(toggleDictation), keyEquivalent: "").target = self
 
-        let modeMenu = NSMenu()
-        for m in ActivationMode.allCases {
-            let item = NSMenuItem(title: m.label, action: #selector(setMode(_:)), keyEquivalent: "")
-            item.representedObject = m.rawValue
-            item.state = s.mode == m ? .on : .off
-            item.target = self
-            modeMenu.addItem(item)
-        }
-        let modeItem = NSMenuItem(title: "Shortcut Mode", action: nil, keyEquivalent: "")
-        modeItem.submenu = modeMenu
-        menu.addItem(modeItem)
-
-        let ai = NSMenuItem(title: "AI Polish (Ollama)", action: #selector(toggleAI), keyEquivalent: "")
-        ai.state = s.ollamaEnabled ? .on : .off
+        let ai = NSMenuItem(title: "AI Polish", action: #selector(toggleAI), keyEquivalent: "")
+        ai.state = s.polishActive ? .on : .off
+        ai.isEnabled = s.polishReady
         ai.target = self
         menu.addItem(ai)
 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open talkatanormalvolumeflow…", action: #selector(openMain), keyEquivalent: "o").target = self
         menu.addItem(withTitle: "History…", action: #selector(openHistory), keyEquivalent: "h").target = self
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         if !Permissions.accessibilityGranted || !Permissions.microphoneGranted {
-            menu.addItem(withTitle: "⚠️ Fix Permissions…", action: #selector(openPermissions), keyEquivalent: "").target = self
+            menu.addItem(withTitle: "⚠️ Finish Setup…", action: #selector(openMain), keyEquivalent: "").target = self
         }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit talkatanormalvolumeflow", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
 
     @objc private func toggleDictation() { DictationController.shared.toggleFromMenu() }
-    @objc private func setMode(_ sender: NSMenuItem) {
-        if let raw = sender.representedObject as? String, let m = ActivationMode(rawValue: raw) { Settings.shared.data.mode = m }
-    }
     @objc private func toggleAI() {
         Settings.shared.data.ollamaEnabled.toggle()
-        if Settings.shared.data.ollamaEnabled { Task { await OllamaManager.shared.ensureRunning() } } else { OllamaManager.shared.stop() }
+        Settings.shared.data.polishSkipped = false
+        if Settings.shared.data.polishActive { Task { await OllamaManager.shared.prepareIfActive() } } else { OllamaManager.shared.stop() }
     }
     @objc private func openMain() { showMain(page: .home) }
     @objc private func openHistory() { showMain(page: .history) }
-    @objc private func openSettings() { showMain(page: .shortcut) }
-    @objc private func openPermissions() { showMain(page: .permissions) }
+
 
     // MARK: window
 

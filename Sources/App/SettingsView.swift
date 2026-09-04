@@ -9,59 +9,87 @@ enum LaunchAtLogin {
     }
 }
 
-// MARK: - General
+/// Shared card look for every settings page.
+struct Card<Content: View>: View {
+    var title: String
+    var subtitle: String? = nil
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.headline)
+                if let subtitle { Text(subtitle).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            }
+            content()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct PageScroll<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) { content() }
+                .padding(28)
+                .frame(maxWidth: 760, alignment: .leading)
+        }
+    }
+}
+
+// MARK: - Shortcut & Behavior
 
 struct GeneralTab: View {
     @ObservedObject var settings = Settings.shared
     @State private var recording = false
 
     var body: some View {
-        Form {
-            Section("Shortcut") {
-                Picker("Preset", selection: presetBinding) {
-                    ForEach(Shortcut.presets, id: \.self) { Text($0.name).tag(Optional($0)) }
-                    Text("Custom…").tag(Optional<Shortcut>.none)
+        PageScroll {
+            Card(title: "Your shortcut", subtitle: "The key you hold (or press) to dictate. It works in every app.") {
+                HStack(spacing: 10) {
+                    ForEach(Shortcut.presets, id: \.self) { p in
+                        Button {
+                            settings.data.shortcut = p
+                        } label: {
+                            Text(p.displayName).frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(settings.data.shortcut == p ? .accentColor : nil)
+                        .controlSize(.large)
+                    }
                 }
                 HStack {
-                    Text("Current shortcut")
+                    Text("Current:").foregroundStyle(.secondary)
+                    Text(settings.data.shortcut.displayName).fontWeight(.semibold)
                     Spacer()
-                    Text(settings.data.shortcut.name).fontWeight(.semibold).foregroundStyle(.secondary)
-                    Button(recording ? "Press a key…" : "Record") { record() }
-                        .disabled(recording)
+                    Button(recording ? "Press any key now…" : "Use a different key…") { record() }.disabled(recording)
                 }
-                Picker("Mode", selection: $settings.data.mode) {
+                if settings.data.shortcut.keyCode == 63 {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "lightbulb.fill").foregroundStyle(.yellow)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Stop the emoji picker from popping up: in System Settings → Keyboard, set **“Press 🌐 key to”** to **Do Nothing**.")
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("Open Keyboard Settings") { Permissions.openKeyboardSettings() }.controlSize(.small)
+                        }
+                    }
+                }
+            }
+            Card(title: "How the key works") {
+                Picker("", selection: $settings.data.mode) {
                     ForEach(ActivationMode.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.radioGroup)
-                if settings.data.shortcut.keyCode == 63 {
-                    Text("Tip: set System Settings → Keyboard → “Press 🌐 key to” → Do Nothing, so macOS doesn't also open the emoji picker.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Open Keyboard Settings") { Permissions.openKeyboardSettings() }.controlSize(.small)
-                }
+                .labelsHidden()
             }
-            Section("Behavior") {
-                Toggle("Launch at login", isOn: launchAtLogin)
-                Toggle("Show floating indicator while dictating", isOn: $settings.data.showOverlay)
-                Toggle("Play start / stop sounds", isOn: $settings.data.playSounds)
-                Toggle("Add a space after inserted text", isOn: $settings.data.trailingSpace)
-                Toggle("Save dictation history on this Mac", isOn: $settings.data.historyEnabled)
-            }
-            Section("Text insertion") {
-                Picker("Method", selection: $settings.data.insertMethod) {
-                    ForEach(InsertMethod.allCases) { Text($0.label).tag($0) }
-                }
-                Toggle("Restore previous clipboard after pasting", isOn: $settings.data.restoreClipboard)
-                    .disabled(settings.data.insertMethod != .paste)
+            Card(title: "Behavior") {
+                Toggle("Open automatically when I log in", isOn: launchAtLogin)
+                Toggle("Play a soft sound when listening starts and stops", isOn: $settings.data.playSounds)
+                Toggle("Add a space after each dictation (so you can keep talking)", isOn: $settings.data.trailingSpace)
             }
         }
-        .formStyle(.grouped)
-    }
-
-    private var presetBinding: Binding<Shortcut?> {
-        Binding(
-            get: { Shortcut.presets.first { $0 == settings.data.shortcut } },
-            set: { if let s = $0 { settings.data.shortcut = s } else { record() } }
-        )
     }
 
     private var launchAtLogin: Binding<Bool> {
@@ -81,10 +109,10 @@ struct GeneralTab: View {
                         settings.data.shortcut = preset
                     } else if Shortcut.flag(forModifierKeyCode: keyCode) != nil {
                         settings.data.shortcut = Shortcut(keyCode: keyCode, modifiers: 0, isModifierKey: true,
-                                                          name: Shortcut.describe(keyCode: keyCode, flags: []))
+                                                          name: KeyNames.name(for: keyCode))
                     }
                 } else {
-                    if keyCode == 53 { return } // Escape cancels recording
+                    if keyCode == 53 { return } // Escape cancels
                     settings.data.shortcut = Shortcut(keyCode: keyCode, modifiers: flags.rawValue, isModifierKey: false,
                                                       name: Shortcut.describe(keyCode: keyCode, flags: flags))
                 }
@@ -93,7 +121,7 @@ struct GeneralTab: View {
     }
 }
 
-// MARK: - Transcription
+// MARK: - Speech Model
 
 struct TranscriptionTab: View {
     @ObservedObject var settings = Settings.shared
@@ -101,20 +129,18 @@ struct TranscriptionTab: View {
     @ObservedObject var controller = DictationController.shared
 
     var body: some View {
-        Form {
-            Section {
-                Text("Everything runs on this Mac with whisper.cpp — audio never leaves your computer.")
-                    .font(.callout).foregroundStyle(.secondary)
+        PageScroll {
+            Card(title: "Speech recognition", subtitle: "Runs entirely on this Mac. Your voice never leaves your computer. “Small (English)” is the right choice for almost everyone.") {
                 LabeledContent("Status", value: controller.modelStatus)
             }
-            Section("Speech model") {
+            Card(title: "Models") {
                 ForEach(WhisperModel.all) { m in
                     HStack(alignment: .center) {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 6) {
                                 Text(m.name).fontWeight(settings.data.modelId == m.id ? .semibold : .regular)
                                 if settings.data.modelId == m.id {
-                                    Text("ACTIVE").font(.caption2).bold().padding(.horizontal, 5).padding(.vertical, 1)
+                                    Text("IN USE").font(.caption2).bold().padding(.horizontal, 5).padding(.vertical, 1)
                                         .background(Color.accentColor.opacity(0.2), in: Capsule())
                                 }
                             }
@@ -137,20 +163,19 @@ struct TranscriptionTab: View {
                             Button("Download") { models.download(m) }.controlSize(.small)
                         }
                     }
+                    if m.id != WhisperModel.all.last?.id { Divider() }
                 }
             }
-            Section("Language") {
-                Picker("Spoken language", selection: $settings.data.language) {
-                    Text("Auto-detect (multilingual models only)").tag("auto")
-                    ForEach(Self.languages, id: \.0) { Text($0.1).tag($0.0) }
-                }
-                if WhisperModel.byId(settings.data.modelId).englishOnly, settings.data.language != "en" {
-                    Text("The active model is English-only; pick a “Multilingual” model for other languages.")
-                        .font(.caption).foregroundStyle(.orange)
+            if !WhisperModel.byId(settings.data.modelId).englishOnly {
+                Card(title: "Spoken language") {
+                    Picker("", selection: $settings.data.language) {
+                        Text("Auto-detect").tag("auto")
+                        ForEach(Self.languages, id: \.0) { Text($0.1).tag($0.0) }
+                    }
+                    .labelsHidden()
                 }
             }
         }
-        .formStyle(.grouped)
     }
 
     static let languages: [(String, String)] = [
@@ -161,113 +186,126 @@ struct TranscriptionTab: View {
     ]
 }
 
-// MARK: - Cleanup
+// MARK: - Cleanup & AI Polish
 
 struct CleanupTab: View {
     @ObservedObject var settings = Settings.shared
     @ObservedObject var ollama = OllamaManager.shared
     @State private var newFrom = ""
     @State private var newTo = ""
-    @State private var customModel = ""
 
     var body: some View {
-        Form {
-            Section("Built-in cleanup (instant, always on device)") {
-                Toggle("Remove filler words", isOn: $settings.data.removeFillers)
-                TextField("Filler words (comma separated)", text: fillerBinding)
-                    .disabled(!settings.data.removeFillers)
-                Toggle("Voice commands: “new line”, “new paragraph”, “scratch that”", isOn: $settings.data.voiceCommands)
-                Toggle("Smart capitalization", isOn: $settings.data.smartCapitalization)
+        PageScroll {
+            Card(title: "AI polish", subtitle: PolishCopy.why) {
+                Toggle("Polish my dictations with AI", isOn: polishToggle)
+                    .toggleStyle(.switch)
+                if settings.data.ollamaEnabled && !settings.data.polishSkipped {
+                    PolishStatusRow()
+                    Picker("Model", selection: $settings.data.ollamaModel) {
+                        ForEach(OllamaManager.suggestedModels, id: \.self) { Text(PolishCopy.label(for: $0)).tag($0) }
+                    }
+                    .onChange(of: settings.data.ollamaModel) { _, _ in
+                        settings.data.polishReady = ollama.hasModel(settings.data.ollamaModel)
+                    }
+                }
             }
-            Section("Custom vocabulary & replacements") {
-                Text("Fix words Whisper mishears (e.g. “zen made” → “ZenMaid”). These also bias recognition toward your terms.")
-                    .font(.caption).foregroundStyle(.secondary)
+            Card(title: "Always-on cleanup", subtitle: "Instant fixes that run on every dictation, even without AI polish.") {
+                Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.data.removeFillers)
+                Toggle("Voice commands: “new line”, “new paragraph”, “scratch that”", isOn: $settings.data.voiceCommands)
+            }
+            Card(title: "Words it gets wrong", subtitle: "Teach it names and terms. “Heard as” → “Should be”. These also help recognition.") {
                 ForEach(settings.data.replacements) { r in
                     HStack {
                         Text(r.from).frame(maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                        Text(r.to).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(r.to).fontWeight(.medium).frame(maxWidth: .infinity, alignment: .leading)
                         Button { settings.data.replacements.removeAll { $0.id == r.id } } label: { Image(systemName: "minus.circle") }
                             .buttonStyle(.borderless)
                     }
                 }
                 HStack {
-                    TextField("Heard as", text: $newFrom)
+                    TextField("Heard as (e.g. zen made)", text: $newFrom)
                     Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                    TextField("Should be", text: $newTo)
+                    TextField("Should be (e.g. ZenMaid)", text: $newTo)
                     Button("Add") {
                         settings.data.replacements.append(Replacement(from: newFrom.trimmingCharacters(in: .whitespaces), to: newTo.trimmingCharacters(in: .whitespaces)))
                         newFrom = ""; newTo = ""
                     }
-                    .disabled(newFrom.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-            Section("AI polish (optional, free, on device via Ollama)") {
-                Toggle("Rewrite with a local AI model", isOn: $settings.data.ollamaEnabled)
-                    .onChange(of: settings.data.ollamaEnabled) { _, on in
-                        if on { Task { await ollama.ensureRunning() } } else { ollama.stop() }
-                    }
-                Text("Fixes grammar, applies “no wait, I meant…” corrections, and removes rambling. Adds about half a second (a few seconds the first time while the model loads). The app works fully without it.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if settings.data.ollamaEnabled {
-                    LabeledContent("Engine") { statusView }
-                    Picker("Model", selection: modelBinding) {
-                        ForEach(OllamaManager.suggestedModels, id: \.self) { Text(label(for: $0)).tag($0) }
-                        if !OllamaManager.suggestedModels.contains(settings.data.ollamaModel) {
-                            Text(settings.data.ollamaModel).tag(settings.data.ollamaModel)
-                        }
-                    }
-                    HStack {
-                        TextField("Or any Ollama model name, e.g. llama3.1:8b", text: $customModel)
-                        Button("Use") { settings.data.ollamaModel = customModel.trimmingCharacters(in: .whitespaces); customModel = "" }
-                            .disabled(customModel.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                    HStack {
-                        if ollama.hasModel(settings.data.ollamaModel) {
-                            Label("\(settings.data.ollamaModel) is installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                        } else {
-                            Label("\(settings.data.ollamaModel) not downloaded yet", systemImage: "arrow.down.circle").foregroundStyle(.orange)
-                            Spacer()
-                            Button("Download model") { Task { await ollama.pull(model: settings.data.ollamaModel) } }
-                                .disabled(!ollama.isReady)
-                        }
-                    }
-                    TextField("Style instructions", text: $settings.data.ollamaStyle, axis: .vertical).lineLimit(2...4)
+                    .disabled(newFrom.trimmingCharacters(in: .whitespaces).isEmpty || newTo.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
-        .formStyle(.grouped)
-        .task { if settings.data.ollamaEnabled { await ollama.ensureRunning() } }
+        .task { await ollama.prepareIfActive() }
     }
 
-    private func label(for m: String) -> String {
+    private var polishToggle: Binding<Bool> {
+        Binding(get: { settings.data.ollamaEnabled && !settings.data.polishSkipped }, set: { on in
+            settings.data.ollamaEnabled = on
+            settings.data.polishSkipped = false
+            if on { Task { await ollama.ensureRunning(); await ollama.prepareIfActive() } } else { ollama.stop() }
+        })
+    }
+}
+
+enum PolishCopy {
+    static let why = "Speech-to-text types exactly what you say, including “um”, repeated words, and “Tuesday, no wait, Wednesday”. AI polish reads each sentence and writes what you meant: clean punctuation, filler words gone, corrections applied. It runs on your Mac (nothing is sent to the internet), it's free, and it adds about half a second."
+    static func size(for m: String) -> String {
         switch m {
-        case "qwen2.5:1.5b": return "Qwen 2.5 1.5B — fastest, ~1 GB"
-        case "gemma3:1b": return "Gemma 3 1B — tiny, ~0.8 GB"
-        case "llama3.2:3b": return "Llama 3.2 3B — better quality, ~2 GB"
-        case "qwen2.5:3b": return "Qwen 2.5 3B — best balance, ~2 GB (recommended)"
+        case "qwen2.5:3b", "llama3.2:3b": return "2 GB"
+        case "qwen2.5:1.5b": return "1 GB"
+        case "gemma3:1b": return "0.8 GB"
+        default: return "download"
+        }
+    }
+    static func label(for m: String) -> String {
+        switch m {
+        case "qwen2.5:3b": return "Recommended · Qwen 2.5 3B · 2 GB download"
+        case "qwen2.5:1.5b": return "Faster, less accurate · Qwen 2.5 1.5B · 1 GB"
+        case "llama3.2:3b": return "Alternative · Llama 3.2 3B · 2 GB"
+        case "gemma3:1b": return "Tiny · Gemma 3 1B · 0.8 GB"
         default: return m
         }
     }
+}
 
-    private var modelBinding: Binding<String> {
-        Binding(get: { settings.data.ollamaModel }, set: { settings.data.ollamaModel = $0 })
-    }
+/// Shows download / running state for the polish model with a single obvious action.
+struct PolishStatusRow: View {
+    @ObservedObject var settings = Settings.shared
+    @ObservedObject var ollama = OllamaManager.shared
 
-    @ViewBuilder private var statusView: some View {
-        switch ollama.status {
-        case .off: Text("Off").foregroundStyle(.secondary)
-        case .starting: HStack { ProgressView().controlSize(.small); Text("Starting…") }
-        case .ready(let which): Label("Running (\(which))", systemImage: "circle.fill").foregroundStyle(.green)
-        case .pulling(let p, let msg):
-            HStack { ProgressView(value: p).frame(width: 100); Text("\(Int(p * 100))% \(msg)").font(.caption).lineLimit(1) }
-        case .error(let e): Text(e).foregroundStyle(.red).font(.caption)
+    var body: some View {
+        HStack(spacing: 10) {
+            switch ollama.status {
+            case .pulling(let p, let msg):
+                ProgressView(value: p).frame(width: 160)
+                Text("\(Int(p * 100))% · \(msg)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            case .starting:
+                ProgressView().controlSize(.small)
+                Text("Starting the AI engine… (up to 30 seconds the first time)").foregroundStyle(.secondary)
+            case .error(let e):
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(e).font(.caption).foregroundStyle(.secondary)
+                Button("Retry") { Task { await ollama.ensureRunning() } }.controlSize(.small)
+            case .off, .ready:
+                if settings.data.polishReady && (ollama.hasModel(settings.data.ollamaModel) || !ollama.isReady) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text("Ready. Polish runs on every dictation.")
+                } else {
+                    Image(systemName: "arrow.down.circle").foregroundStyle(.orange)
+                    Text("Not downloaded yet.")
+                    Button("Download AI Polish (\(PolishCopy.size(for: settings.data.ollamaModel)))") {
+                        Task {
+                            await ollama.ensureRunning()
+                            guard ollama.isReady else { return }
+                            if ollama.hasModel(settings.data.ollamaModel) { settings.data.polishReady = true }
+                            else { await ollama.pull(model: settings.data.ollamaModel) }
+                            await ollama.prepareIfActive()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
         }
-    }
-
-    private var fillerBinding: Binding<String> {
-        Binding(get: { settings.data.fillerWords.joined(separator: ", ") },
-                set: { settings.data.fillerWords = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } })
     }
 }
 
@@ -284,13 +322,16 @@ struct HistoryTab: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                TextField("Search", text: $search).textFieldStyle(.roundedBorder)
+                TextField("Search your dictations", text: $search).textFieldStyle(.roundedBorder)
                 Button("Clear all", role: .destructive) { history.clear() }.disabled(history.entries.isEmpty)
             }
-            .padding(10)
+            .padding(14)
             if filtered.isEmpty {
                 Spacer()
-                Text(history.entries.isEmpty ? "Your dictations will show up here." : "No matches").foregroundStyle(.secondary)
+                VStack(spacing: 6) {
+                    Image(systemName: "clock").font(.system(size: 30)).foregroundStyle(.secondary)
+                    Text(history.entries.isEmpty ? "Everything you dictate is saved here, on this Mac only." : "No matches").foregroundStyle(.secondary)
+                }
                 Spacer()
             } else {
                 List(filtered) { e in
@@ -299,7 +340,6 @@ struct HistoryTab: View {
                         HStack {
                             Text(e.date, style: .relative) + Text(" ago")
                             if !e.appName.isEmpty { Text("· \(e.appName)") }
-                            Text("· \(String(format: "%.1fs", e.durationSeconds))")
                             Spacer()
                             Button("Copy") {
                                 NSPasteboard.general.clearContents()
@@ -312,54 +352,6 @@ struct HistoryTab: View {
                     .padding(.vertical, 2)
                 }
             }
-        }
-    }
-}
-
-// MARK: - Permissions
-
-struct PermissionsTab: View {
-    @State private var mic = Permissions.microphoneGranted
-    @State private var ax = Permissions.accessibilityGranted
-    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        Form {
-            Section {
-                row("Microphone", ok: mic, why: "To hear you.") {
-                    Task { _ = await Permissions.requestMicrophone(); mic = Permissions.microphoneGranted }
-                    if !mic { Permissions.openMicrophoneSettings() }
-                }
-                row("Accessibility", ok: ax, why: "To detect your shortcut key in any app and to paste the text.") {
-                    Permissions.promptAccessibility()
-                    Permissions.openAccessibilitySettings()
-                }
-            }
-            Section {
-                Text("If you updated the app and the shortcut stopped working, remove talkatanormalvolumeflow from the Accessibility list and add it again, then relaunch.")
-                    .font(.caption).foregroundStyle(.secondary)
-                LabeledContent("Shortcut listener", value: DictationController.shared.hotkeys.isRunning ? "Active" : "Not running (grant Accessibility, then relaunch)")
-            }
-            Section("About") {
-                LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
-                Text("talkatanormalvolumeflow is free, open source, and 100% on-device. Speech recognition by whisper.cpp; optional polish by Ollama.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-        .onReceive(timer) { _ in
-            mic = Permissions.microphoneGranted
-            ax = Permissions.accessibilityGranted
-            if ax, !DictationController.shared.hotkeys.isRunning { _ = DictationController.shared.startHotkeys() }
-        }
-    }
-
-    private func row(_ name: String, ok: Bool, why: String, action: @escaping () -> Void) -> some View {
-        HStack {
-            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(ok ? .green : .red)
-            VStack(alignment: .leading) { Text(name); Text(why).font(.caption).foregroundStyle(.secondary) }
-            Spacer()
-            if !ok { Button("Grant…", action: action) }
         }
     }
 }

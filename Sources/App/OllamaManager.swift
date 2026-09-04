@@ -24,7 +24,7 @@ final class OllamaManager: ObservableObject {
     var bundledBinary: URL? {
         let candidates = [
             Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/ollama/ollama"),
-            Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("../../vendor/ollama/ollama").standardizedFileURL,
+            Bundle.main.bundleURL.appendingPathComponent("../../vendor/ollama/ollama").standardizedFileURL,   // swift build dev runs
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
@@ -121,7 +121,31 @@ final class OllamaManager: ObservableObject {
         guard let (data, _) = try? await session.data(from: baseURL.appendingPathComponent("api/tags")),
               let tags = try? JSONDecoder().decode(Tags.self, from: data) else { return }
         let names = tags.models.map(\.name)
-        await MainActor.run { installedModels = names }
+        await MainActor.run {
+            installedModels = names
+            let want = Settings.shared.data.ollamaModel
+            if names.contains(want) || names.contains(want + ":latest") { Settings.shared.data.polishReady = true }
+        }
+    }
+
+    /// Loads the model into memory so the first dictation isn't slow.
+    func warmUp(model: String) async {
+        guard isReady, hasModel(model) else { return }
+        let body: [String: Any] = ["model": model, "keep_alive": "30m", "messages": [], "stream": false]
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = 120
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await session.data(for: req)
+    }
+
+    /// Starts the server (if polish is on and downloaded) and preloads the model.
+    func prepareIfActive() async {
+        let s = Settings.shared.data
+        guard s.polishActive else { return }
+        await ensureRunning()
+        await warmUp(model: s.ollamaModel)
     }
 
     func hasModel(_ name: String) -> Bool {
@@ -172,6 +196,10 @@ final class OllamaManager: ObservableObject {
     - No markdown, no quotes, no preamble. Output ONLY the cleaned text.
     Example input: "okay so um the client said they they want the deep clean done before friday, no, thursday. let me know if that works"
     Example output: "Okay, so the client said they want the deep clean done before Thursday. Let me know if that works."
+    Example input: "can you add John, sorry, Jen to the invite and uh send it by 3, I mean 4"
+    Example output: "Can you add Jen to the invite and send it by 4?"
+    Example input: "yeah no that's totally fine just ping me when you're done"
+    Example output: "Yeah, no, that's totally fine. Just ping me when you're done."
     """
 
     /// Cleans each line separately so line/paragraph breaks from voice commands are always preserved.
