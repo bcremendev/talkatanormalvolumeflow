@@ -56,15 +56,16 @@ struct OverlayView: View {
         HStack(spacing: 12) {
             switch controller.state {
             case .recording:
+                Image(systemName: "mic.fill").foregroundStyle(Theme.violet).font(.system(size: 14, weight: .semibold))
                 Waveform(level: recorder.level)
-                    .frame(width: 90, height: 24)
+                    .frame(width: 96, height: 26)
                 Text("Listening…")
                     .font(.system(size: 13, weight: .medium))
                 Text("esc to cancel")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             case .processing(let msg):
-                ProgressView().controlSize(.small)
+                ProgressView().controlSize(.small).tint(Theme.violet)
                 Text(msg).font(.system(size: 13, weight: .medium))
             case .notice(let msg):
                 Image(systemName: "exclamationmark.circle")
@@ -82,21 +83,35 @@ struct OverlayView: View {
     }
 }
 
+/// A flowing wave in the icon's colours (sky → violet → pink → peach). Louder speech = taller, faster ripples.
 struct Waveform: View {
     var level: Float
-    @State private var phase: Double = 0
-    private let bars = 14
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1/30)) { ctx in
+        TimelineView(.animation(minimumInterval: 1/60)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .center, spacing: 3) {
-                ForEach(0..<bars, id: \.self) { i in
-                    let wobble = 0.5 + 0.5 * sin(t * 9 + Double(i) * 0.9)
-                    let h = 4 + CGFloat(Double(level) * 20 * (0.4 + wobble))
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Theme.wave)
-                        .frame(width: 3, height: max(4, min(24, h)))
+            Canvas { g, size in
+                let amp = Double(min(1, max(0.08, level * 3.2)))
+                let mid = size.height / 2
+                // Three layered ribbons, like the icon's stacked wave, each slightly offset.
+                let layers: [(phase: Double, scale: Double, width: Double, opacity: Double)] = [
+                    (0.0, 1.0, 3.2, 1.0), (0.9, 0.7, 2.4, 0.6), (1.8, 0.45, 1.8, 0.4),
+                ]
+                for l in layers {
+                    var path = Path()
+                    let steps = 48
+                    for i in 0...steps {
+                        let x = size.width * Double(i) / Double(steps)
+                        let u = Double(i) / Double(steps)
+                        // Fade the wave in at the left and out at the right so it feels like it trails off.
+                        let envelope = sin(u * .pi)
+                        let y = mid + sin(u * 4.2 + t * 6.5 + l.phase) * (size.height * 0.48) * amp * l.scale * envelope
+                        if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
+                    }
+                    let gradient = Gradient(colors: [Theme.sky, Theme.violet, Theme.pink, Theme.peach])
+                    g.opacity = l.opacity
+                    g.stroke(path, with: .linearGradient(gradient, startPoint: .zero, endPoint: CGPoint(x: size.width, y: 0)),
+                             style: StrokeStyle(lineWidth: l.width, lineCap: .round, lineJoin: .round))
                 }
             }
         }

@@ -126,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        Updater.shared.checkIfStale()
         menu.removeAllItems()
         let c = DictationController.shared
         let s = Settings.shared.data
@@ -193,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func showMain(page: Page) {
         pageHolder.page = page
+        Updater.shared.checkIfStale()
         if mainWindow == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: MainView(holder: pageHolder)))
             w.title = "talkatanormalvolumeflow"

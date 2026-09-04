@@ -37,6 +37,13 @@ final class Updater: ObservableObject {
         }
     }
 
+    /// Quiet re-check when the user opens the menu or window, at most every 10 minutes.
+    func checkIfStale() {
+        if let t = lastChecked, Date().timeIntervalSince(t) < 600 { return }
+        if case .available = state { return }
+        Task { await check(quiet: true) }
+    }
+
     /// `quiet` = don't show "up to date" / network errors (background check).
     func check(quiet: Bool) async {
         if case .downloading = state { return }
@@ -64,6 +71,7 @@ final class Updater: ObservableObject {
             }
             state = .available(version: latest, zip: zip)
         } catch {
+            lastChecked = Date()
             if !quiet { state = .error("Couldn't check for updates. Are you online?") }
             else if case .checking = state { state = .idle }
         }
