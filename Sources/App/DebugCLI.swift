@@ -7,6 +7,7 @@ enum DebugCLI {
     static func runIfRequested() -> Bool {
         let args = CommandLine.arguments
         if args.contains("--polish-test") { polishTest(); return true }
+        if let i = args.firstIndex(of: "--mic-test") { micTest(seconds: i + 1 < args.count ? Double(args[i + 1]) ?? 3 : 3); return true }
         guard let i = args.firstIndex(of: "--transcribe"), i + 1 < args.count else { return false }
         let file = URL(fileURLWithPath: args[i + 1])
         var modelId = Settings.shared.data.modelId
@@ -37,6 +38,37 @@ enum DebugCLI {
         while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
         WhisperEngine.shared.unloadSync()
         return true
+    }
+
+    /// `--mic-test [seconds]`: records from the default microphone, reports the level, and transcribes it.
+    /// Tells apart "mic is muted / wrong device" from "recognition failed".
+    static func micTest(seconds: Double) {
+        let log: (String) -> Void = { FileHandle.standardError.write(($0 + "\n").data(using: .utf8)!) }
+        var done = false
+        Task { @MainActor in
+            log("microphone permission: \(Permissions.microphoneGranted ? "granted" : "NOT granted")")
+            if let dev = AVCaptureDevice.default(for: .audio) { log("default input: \(dev.localizedName)") }
+            let rec = AudioRecorder()
+            do { try rec.start() } catch { log("start failed: \(error.localizedDescription)"); done = true; return }
+            log("recording \(Int(seconds))s… say something")
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            let samples = rec.stop()
+            let peak = samples.map { abs($0) }.max() ?? 0
+            let rms = samples.isEmpty ? 0 : sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count))
+            log(String(format: "captured %.1fs  peak %.4f  rms %.4f  %@", Double(samples.count) / 16000, peak, rms,
+                       peak < 0.001 ? "→ SILENCE: mic is muted, wrong device selected, or permission denied" : "→ audio OK"))
+            let settings = Settings.shared.data
+            let model = WhisperModel.byId(settings.modelId)
+            do {
+                try await WhisperEngine.shared.load(path: ModelManager.shared.path(for: model).path)
+                let raw = try await WhisperEngine.shared.transcribe(samples: samples, language: settings.language, prompt: TextCleaner.whisperPrompt(from: settings))
+                log("raw transcript: \"\(raw)\"")
+                log("cleaned: \"\(TextCleaner(settings: settings).clean(raw))\"")
+            } catch { log("transcribe error: \(error.localizedDescription)") }
+            done = true
+        }
+        while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        WhisperEngine.shared.unloadSync()
     }
 
     /// `--polish-test`: starts the bundled Ollama exactly like the Home screen button, downloads the model if needed,

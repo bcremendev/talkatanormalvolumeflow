@@ -138,6 +138,13 @@ final class DictationController: ObservableObject {
         let duration = Double(samples.count) / 16000
         if settings.playSounds { Sounds.stop() }
         guard duration > 0.3 else { state = .idle; overlay.hide(); return }
+        // Dead silence means the mic is muted, the wrong device is selected, or macOS is blocking audio
+        // (that can happen right after the app is updated). Say so instead of a vague "Didn't catch that".
+        let peak = samples.reduce(Float(0)) { max($0, abs($1)) }
+        if peak < 0.002 {
+            showNotice("No sound reached the app. Is the mic muted? Check System Settings → Sound → Input, and Privacy & Security → Microphone.", seconds: 6)
+            return
+        }
         state = .processing("Transcribing…")
         let snapshot = settings
         let app = targetApp
