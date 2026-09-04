@@ -63,6 +63,7 @@ struct HomePage: View {
     @ObservedObject var models = ModelManager.shared
     @ObservedObject var controller = DictationController.shared
     @ObservedObject var ollama = OllamaManager.shared
+    @ObservedObject var updater = Updater.shared
     @State private var mic = Permissions.microphoneGranted
     @State private var ax = Permissions.accessibilityGranted
     @State private var tryText = ""
@@ -79,6 +80,7 @@ struct HomePage: View {
     var body: some View {
         PageScroll {
             header
+            updateBanner
             if allDone {
                 howToCard
                 tryCard
@@ -115,6 +117,45 @@ struct HomePage: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    // MARK: updates
+
+    @ViewBuilder private var updateBanner: some View {
+        switch updater.state {
+        case .idle: EmptyView()
+        case .checking:
+            bannerRow(icon: "arrow.triangle.2.circlepath", color: .secondary) { Text("Checking for updates…").foregroundStyle(.secondary) }
+        case .upToDate:
+            bannerRow(icon: "checkmark.circle.fill", color: .green) { Text("You have the latest version (\(Updater.currentVersion)).") }
+        case .available(let v, _):
+            bannerRow(icon: "arrow.down.circle.fill", color: .accentColor) {
+                Text("Version \(v) is available.").fontWeight(.semibold)
+                Text("You have \(Updater.currentVersion). The app will restart.").foregroundStyle(.secondary)
+                Spacer()
+                Button(Updater.canSelfUpdate ? "Update Now" : "Get It") { updater.installAvailable() }.buttonStyle(.borderedProminent)
+            }
+        case .downloading:
+            bannerRow(icon: "arrow.down.circle", color: .accentColor) { ProgressView().controlSize(.small); Text("Downloading the update…") }
+        case .installing:
+            bannerRow(icon: "gearshape.fill", color: .accentColor) { ProgressView().controlSize(.small); Text("Installing… the app will reopen in a moment.") }
+        case .error(let e):
+            bannerRow(icon: "exclamationmark.triangle.fill", color: .orange) {
+                Text(e).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Open Download Page") { NSWorkspace.shared.open(Updater.releasesPage) }
+            }
+        }
+    }
+
+    private func bannerRow<C: View>(icon: String, color: Color, @ViewBuilder _ content: () -> C) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).foregroundStyle(color)
+            content()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: setup

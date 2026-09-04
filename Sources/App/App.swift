@@ -45,6 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             showMain(page: page)
         }
         Task { await OllamaManager.shared.prepareIfActive() }
+        Updater.shared.startPeriodicChecks()
+        if CommandLine.arguments.contains("--install-update") {   // for testing the self-updater
+            Task { await Updater.shared.check(quiet: false); Updater.shared.installAvailable() }
+        }
 
         // Re-arm the hotkey tap once Accessibility is granted (polls while not running).
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -74,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let appItem = NSMenuItem(); main.addItem(appItem)
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About talkatanormalvolumeflow", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide talkatanormalvolumeflow", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit talkatanormalvolumeflow", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -160,6 +165,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if !Permissions.accessibilityGranted || !Permissions.microphoneGranted {
             menu.addItem(withTitle: "⚠️ Finish Setup…", action: #selector(openMain), keyEquivalent: "").target = self
         }
+        if let v = Updater.shared.availableVersion {
+            menu.addItem(withTitle: "⬆️ Update to version \(v)…", action: #selector(openMain), keyEquivalent: "").target = self
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit talkatanormalvolumeflow", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
@@ -171,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if Settings.shared.data.polishActive { Task { await OllamaManager.shared.prepareIfActive() } } else { OllamaManager.shared.stop() }
     }
     @objc private func openMain() { showMain(page: .home) }
+    @objc private func checkForUpdates() { showMain(page: .home); Task { await Updater.shared.check(quiet: false) } }
     @objc private func openHistory() { showMain(page: .history) }
 
 
