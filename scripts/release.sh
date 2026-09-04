@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${1:?usage: release.sh <version>}"
 VERSION="$VERSION" ./scripts/build.sh
-git add -A && git commit -qm "Release $VERSION" || true
+git add -A && git -c user.name="Brent Cremen" -c user.email="brent@zenmaid.com" commit -qm "Release $VERSION" || true
 git push -q
 gh release create "v$VERSION" "dist/talkatanormalvolumeflow-$VERSION.dmg" "dist/talkatanormalvolumeflow-$VERSION.zip" \
   --title "talkatanormalvolumeflow $VERSION" --generate-notes
