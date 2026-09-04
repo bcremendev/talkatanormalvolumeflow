@@ -95,7 +95,7 @@ struct Waveform: View {
                     let wobble = 0.5 + 0.5 * sin(t * 9 + Double(i) * 0.9)
                     let h = 4 + CGFloat(Double(level) * 20 * (0.4 + wobble))
                     RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Color.accentColor)
+                        .fill(Theme.wave)
                         .frame(width: 3, height: max(4, min(24, h)))
                 }
             }

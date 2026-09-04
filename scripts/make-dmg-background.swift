@@ -8,8 +8,11 @@ rep.size = NSSize(width: w, height: h)
 NSGraphicsContext.saveGraphicsState()
 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 
-NSGradient(colors: [NSColor(calibratedWhite: 0.97, alpha: 1), NSColor(calibratedWhite: 0.92, alpha: 1)])!
-    .draw(in: NSRect(x: 0, y: 0, width: w, height: h), angle: -90)
+// Soft version of the app icon's pink → violet → sky wash.
+NSGradient(colors: [NSColor(calibratedRed: 0.99, green: 0.93, blue: 0.95, alpha: 1),
+                    NSColor(calibratedRed: 0.94, green: 0.92, blue: 0.99, alpha: 1),
+                    NSColor(calibratedRed: 0.90, green: 0.96, blue: 1.0, alpha: 1)])!
+    .draw(in: NSRect(x: 0, y: 0, width: w, height: h), angle: -35)
 
 func text(_ s: String, size: CGFloat, weight: NSFont.Weight, color: NSColor, y: CGFloat) {
     let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color]
@@ -27,7 +30,7 @@ arrow.lineCapStyle = .round
 arrow.lineJoinStyle = .round
 arrow.move(to: NSPoint(x: 265, y: 205)); arrow.line(to: NSPoint(x: 395, y: 205))
 arrow.move(to: NSPoint(x: 370, y: 230)); arrow.line(to: NSPoint(x: 395, y: 205)); arrow.line(to: NSPoint(x: 370, y: 180))
-NSColor(calibratedRed: 0.2, green: 0.5, blue: 0.95, alpha: 1).setStroke()
+NSColor(calibratedRed: 0.44, green: 0.26, blue: 0.89, alpha: 1).setStroke()
 arrow.stroke()
 
 NSAttributedString(string: "Step 1: drag the app →", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor(calibratedWhite: 0.45, alpha: 1)]).draw(at: NSPoint(x: 100, y: 92))

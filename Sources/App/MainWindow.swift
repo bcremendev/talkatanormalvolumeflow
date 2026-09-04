@@ -49,6 +49,7 @@ struct MainView: View {
             .navigationTitle(holder.page.title)
         }
         .frame(minWidth: 820, minHeight: 600)
+        .tint(Theme.accent)
     }
 }
 
@@ -108,7 +109,7 @@ struct HomePage: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 52, height: 52)
+            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 60, height: 60)
             VStack(alignment: .leading, spacing: 2) {
                 Text("talkatanormalvolumeflow").font(.system(size: 22, weight: .bold))
                 Text(s.shortcut.isMouseButton
@@ -129,16 +130,16 @@ struct HomePage: View {
         case .upToDate:
             bannerRow(icon: "checkmark.circle.fill", color: .green) { Text("You have the latest version (\(Updater.currentVersion)).") }
         case .available(let v, _):
-            bannerRow(icon: "arrow.down.circle.fill", color: .accentColor) {
+            bannerRow(icon: "arrow.down.circle.fill", color: Theme.accent) {
                 Text("Version \(v) is available.").fontWeight(.semibold)
                 Text("You have \(Updater.currentVersion). The app will restart.").foregroundStyle(.secondary)
                 Spacer()
                 Button(Updater.canSelfUpdate ? "Update Now" : "Get It") { updater.installAvailable() }.buttonStyle(.borderedProminent)
             }
         case .downloading:
-            bannerRow(icon: "arrow.down.circle", color: .accentColor) { ProgressView().controlSize(.small); Text("Downloading the update…") }
+            bannerRow(icon: "arrow.down.circle", color: Theme.accent) { ProgressView().controlSize(.small); Text("Downloading the update…") }
         case .installing:
-            bannerRow(icon: "gearshape.fill", color: .accentColor) { ProgressView().controlSize(.small); Text("Installing… the app will reopen in a moment.") }
+            bannerRow(icon: "gearshape.fill", color: Theme.accent) { ProgressView().controlSize(.small); Text("Installing… the app will reopen in a moment.") }
         case .error(let e):
             bannerRow(icon: "exclamationmark.triangle.fill", color: .orange) {
                 Text(e).fixedSize(horizontal: false, vertical: true)
@@ -242,7 +243,7 @@ struct HomePage: View {
         let active = n == currentStep && !done
         HStack(alignment: .top, spacing: 12) {
             ZStack {
-                Circle().fill(done ? Color.green : (active ? Color.accentColor : Color.secondary.opacity(0.3))).frame(width: 26, height: 26)
+                Circle().fill(done ? AnyShapeStyle(Color.green) : (active ? AnyShapeStyle(Theme.wash) : AnyShapeStyle(Color.secondary.opacity(0.3)))).frame(width: 26, height: 26)
                 if done { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(.white) }
                 else { Text("\(n)").font(.system(size: 13, weight: .bold)).foregroundStyle(.white) }
             }
@@ -291,14 +292,15 @@ struct HomePage: View {
 
     private func stepBox(icon: String, title: String, subtitle: String, highlight: Bool = false) -> some View {
         VStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 22)).foregroundStyle(highlight ? Color.accentColor : .secondary)
+            Image(systemName: icon).font(.system(size: 22)).foregroundStyle(highlight ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(.secondary))
             Text(title).font(.system(size: 16, weight: .bold))
-            Text(subtitle).font(.callout).foregroundStyle(highlight ? Color.accentColor : .secondary).multilineTextAlignment(.center)
+            Text(subtitle).font(.callout).foregroundStyle(highlight ? Theme.accent : .secondary).multilineTextAlignment(.center)
                 .fontWeight(highlight ? .semibold : .regular)
         }
         .frame(maxWidth: .infinity, minHeight: 84)
         .padding(10)
-        .background(highlight ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .background(highlight ? Theme.accent.opacity(0.12) : Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .overlay { if highlight { RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.wave, lineWidth: 1.5) } }
     }
 
     private var tryCard: some View {
@@ -313,7 +315,7 @@ struct HomePage: View {
                 .frame(minHeight: 80, maxHeight: 140)
                 .padding(6)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(tryFocused ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: tryFocused ? 2 : 1))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(tryFocused ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(Color.secondary.opacity(0.3)), lineWidth: tryFocused ? 2 : 1))
                 .focused($tryFocused)
             HStack {
                 statusPill

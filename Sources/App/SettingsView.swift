@@ -97,7 +97,7 @@ struct GeneralTab: View {
     private func presetButton(_ p: Shortcut) -> some View {
         Button { settings.data.shortcut = p } label: { Text(p.displayName).frame(maxWidth: .infinity) }
             .buttonStyle(.bordered)
-            .tint(settings.data.shortcut == p ? .accentColor : nil)
+            .tint(settings.data.shortcut == p ? Theme.accent : nil)
             .controlSize(.large)
     }
 
@@ -191,7 +191,7 @@ struct TranscriptionTab: View {
         let downloading = models.progress[target.id]
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .font(.system(size: 18)).foregroundStyle(selected ? Color.accentColor : .secondary)
+                .font(.system(size: 18)).foregroundStyle(selected ? Theme.accent : .secondary)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -218,7 +218,7 @@ struct TranscriptionTab: View {
         .onTapGesture { if !selected || current.id != target.id { models.use(target) } }
     }
 
-    private func badge(_ text: String, color: Color = .accentColor) -> some View {
+    private func badge(_ text: String, color: Color = Theme.accent) -> some View {
         Text(text).font(.caption2).bold().padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.2), in: Capsule())
     }

@@ -107,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "Dictation")
+        statusItem.button?.image = MenuBarIcon.image(.idle)
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
@@ -115,20 +115,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func updateIcon() {
-        let c = DictationController.shared
-        let name: String
-        switch c.state {
-        case .idle, .notice: name = "mic"
-        case .recording: name = "mic.fill"
-        case .processing: name = "ellipsis.circle"
+        let style: MenuBarIcon.Style
+        switch DictationController.shared.state {
+        case .idle, .notice: style = .idle
+        case .recording: style = .recording
+        case .processing: style = .processing
         }
-        let img = NSImage(systemSymbolName: name, accessibilityDescription: "Dictation")
-        if case .recording = c.state {
-            statusItem.button?.image = img?.withSymbolConfiguration(.init(paletteColors: [.systemRed]))
-            statusItem.button?.image?.isTemplate = false
-        } else {
-            statusItem.button?.image = img
-        }
+        statusItem.button?.image = MenuBarIcon.image(style)
+        statusItem.button?.image?.accessibilityDescription = "Dictation"
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
