@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Colours lifted from the app icon: violet mic, sky-blue and pink wave, peach corner.
+/// The whole window is painted with them: a gradient canvas, frosted cards, gradient buttons and a coloured sidebar.
 enum Theme {
     static let violet = Color(red: 0.44, green: 0.26, blue: 0.89)     // #7143E3 mic body
     static let indigo = Color(red: 0.24, green: 0.25, blue: 0.70)     // mic stand
@@ -9,13 +10,109 @@ enum Theme {
     static let pink   = Color(red: 0.97, green: 0.45, blue: 0.65)
     static let peach  = Color(red: 0.99, green: 0.68, blue: 0.40)
 
-    /// Accent used for buttons, toggles, selection and the waveform.
+    /// Accent used for toggles, radios, checkboxes and selection.
     static let accent = violet
 
     /// The icon's diagonal wash, for hero surfaces.
     static let wash = LinearGradient(colors: [pink, violet, sky], startPoint: .topLeading, endPoint: .bottomTrailing)
-    /// The wave's colours, for the "Hold → Talk → Let go" highlight and progress accents.
+    /// The wave's colours, for highlights, borders and buttons.
     static let wave = LinearGradient(colors: [sky, violet, pink, peach], startPoint: .leading, endPoint: .trailing)
+    static let waveColors: [Color] = [sky, violet, pink, peach]
+
+    // MARK: canvas (whole-window background)
+
+    /// Deep, saturated version of the icon in dark mode; airy pastel version in light mode.
+    static func canvasColors(_ scheme: ColorScheme) -> [Color] {
+        scheme == .dark
+            ? [Color(red: 0.30, green: 0.10, blue: 0.36), Color(red: 0.16, green: 0.12, blue: 0.42), Color(red: 0.06, green: 0.26, blue: 0.42)]
+            : [Color(red: 1.00, green: 0.90, blue: 0.94), Color(red: 0.92, green: 0.89, blue: 1.00), Color(red: 0.86, green: 0.95, blue: 1.00)]
+    }
+
+    /// Fill for cards and the sidebar: translucent white on dark, translucent white on light too (it reads as frosted glass).
+    static func glass(_ scheme: ColorScheme) -> Color { scheme == .dark ? .white.opacity(0.09) : .white.opacity(0.55) }
+    static func glassStrong(_ scheme: ColorScheme) -> Color { scheme == .dark ? .white.opacity(0.14) : .white.opacity(0.8) }
+    static func hairline(_ scheme: ColorScheme) -> Color { scheme == .dark ? .white.opacity(0.14) : .white.opacity(0.9) }
+    /// Text-field background inside a card.
+    static func well(_ scheme: ColorScheme) -> Color { scheme == .dark ? .black.opacity(0.25) : .white.opacity(0.7) }
+}
+
+/// The gradient wash behind every page, with two soft colour blooms so it isn't a flat ramp.
+struct CanvasBackground: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: Theme.canvasColors(scheme), startPoint: .topLeading, endPoint: .bottomTrailing)
+            GeometryReader { g in
+                Circle().fill(Theme.pink.opacity(scheme == .dark ? 0.35 : 0.35)).blur(radius: 90)
+                    .frame(width: g.size.width * 0.6).offset(x: g.size.width * 0.55, y: -g.size.height * 0.25)
+                Circle().fill(Theme.sky.opacity(scheme == .dark ? 0.35 : 0.4)).blur(radius: 90)
+                    .frame(width: g.size.width * 0.6).offset(x: -g.size.width * 0.15, y: g.size.height * 0.55)
+                Circle().fill(Theme.peach.opacity(scheme == .dark ? 0.22 : 0.35)).blur(radius: 80)
+                    .frame(width: g.size.width * 0.4).offset(x: g.size.width * 0.7, y: g.size.height * 0.7)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+/// Frosted card with a faint gradient edge.
+struct ThemedCard: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    var padding: CGFloat = 16
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .background(Theme.glass(scheme), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.hairline(scheme), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.wave.opacity(scheme == .dark ? 0.35 : 0.5), lineWidth: 1))
+            .shadow(color: .black.opacity(scheme == .dark ? 0.25 : 0.06), radius: 10, y: 4)
+    }
+}
+
+extension View {
+    func themedCard(padding: CGFloat = 16) -> some View { modifier(ThemedCard(padding: padding)) }
+    /// Title text painted with the wave gradient.
+    func gradientText() -> some View { foregroundStyle(Theme.wave) }
+}
+
+/// Primary button: gradient fill, white text, soft glow.
+struct GradientButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14).padding(.vertical, 7)
+            .background(Theme.wave, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.25), lineWidth: 1))
+            .shadow(color: Theme.violet.opacity(0.35), radius: 6, y: 2)
+            .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+    }
+}
+
+/// Secondary button: frosted pill.
+struct GlassButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.isEnabled) private var enabled
+    var selected = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: selected ? .semibold : .regular))
+            .foregroundStyle(selected ? .white : .primary)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(selected ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(Theme.glassStrong(scheme)), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? Color.white.opacity(0.3) : Theme.hairline(scheme), lineWidth: 1))
+            .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+    }
+}
+
+extension ButtonStyle where Self == GradientButtonStyle {
+    static var gradient: GradientButtonStyle { GradientButtonStyle() }
+}
+extension ButtonStyle where Self == GlassButtonStyle {
+    static var glass: GlassButtonStyle { GlassButtonStyle() }
+    static func glass(selected: Bool) -> GlassButtonStyle { GlassButtonStyle(selected: selected) }
 }
 
 /// Menu bar icon drawn to match the app icon: a small mic with a wave trailing off to the right.

@@ -17,14 +17,13 @@ struct Card<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
+                Text(title).font(.system(size: 15, weight: .bold)).gradientText()
                 if let subtitle { Text(subtitle).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }
             content()
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+        .themedCard()
     }
 }
 
@@ -34,7 +33,7 @@ struct PageScroll<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) { content() }
-                .padding(.horizontal, 24).padding(.vertical, 18)
+                .padding(.horizontal, 24).padding(.top, 34).padding(.bottom, 18)
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -61,7 +60,7 @@ struct GeneralTab: View {
                     Text("Current:").foregroundStyle(.secondary)
                     Text(settings.data.shortcut.displayName).fontWeight(.semibold)
                     Spacer()
-                    Button(recording ? "Press a key or click a mouse button now…" : "Use something else…") { record() }.disabled(recording)
+                    Button(recording ? "Press a key or click a mouse button now…" : "Use something else…") { record() }.buttonStyle(.glass).disabled(recording)
                 }
                 if settings.data.shortcut.isMouseButton {
                     tip("If you use Logi Options+ or similar software, that software may grab the button first. Either leave the button unassigned there, or have it send a keystroke (like F13) and record that keystroke here.")
@@ -72,7 +71,7 @@ struct GeneralTab: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Stop the emoji picker from popping up: in System Settings → Keyboard, set **“Press 🌐 key to”** to **Do Nothing**.")
                                 .fixedSize(horizontal: false, vertical: true)
-                            Button("Open Keyboard Settings") { Permissions.openKeyboardSettings() }.controlSize(.small)
+                            Button("Open Keyboard Settings") { Permissions.openKeyboardSettings() }.buttonStyle(.glass)
                         }
                     }
                 }
@@ -96,9 +95,7 @@ struct GeneralTab: View {
 
     private func presetButton(_ p: Shortcut) -> some View {
         Button { settings.data.shortcut = p } label: { Text(p.displayName).frame(maxWidth: .infinity) }
-            .buttonStyle(.bordered)
-            .tint(settings.data.shortcut == p ? Theme.accent : nil)
-            .controlSize(.large)
+            .buttonStyle(.glass(selected: settings.data.shortcut == p))
     }
 
     private func tip(_ text: String) -> some View {
@@ -191,7 +188,7 @@ struct TranscriptionTab: View {
         let downloading = models.progress[target.id]
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .font(.system(size: 18)).foregroundStyle(selected ? Theme.accent : .secondary)
+                .font(.system(size: 18)).foregroundStyle(selected ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(.secondary))
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -204,7 +201,7 @@ struct TranscriptionTab: View {
                     HStack {
                         ProgressView(value: p).frame(width: 200)
                         Text("\(Int(p * 100))%").font(.caption).monospacedDigit()
-                        Button("Cancel") { models.cancel(target) }.controlSize(.small)
+                        Button("Cancel") { models.cancel(target) }.buttonStyle(.glass)
                     }
                 } else if !models.isDownloaded(target) {
                     Text("Needs a one-time \(target.sizeMB >= 1000 ? String(format: "%.1f GB", Double(target.sizeMB) / 1024) : "\(target.sizeMB) MB") download.")
@@ -218,9 +215,9 @@ struct TranscriptionTab: View {
         .onTapGesture { if !selected || current.id != target.id { models.use(target) } }
     }
 
-    private func badge(_ text: String, color: Color = Theme.accent) -> some View {
-        Text(text).font(.caption2).bold().padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color.opacity(0.2), in: Capsule())
+    private func badge(_ text: String, color: Color? = nil) -> some View {
+        Text(text).font(.caption2).bold().foregroundStyle(.white).padding(.horizontal, 7).padding(.vertical, 2)
+            .background(color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(Theme.wave), in: Capsule())
     }
 
     private var otherLanguageBinding: Binding<Bool> {
@@ -232,7 +229,7 @@ struct TranscriptionTab: View {
     }
 
     static let languages: [(String, String)] = [
-        ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("pt", "Portuguese"), ("it", "Italian"),
+        ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("pt", "Portuguese"), ("it", "Italian"),
         ("nl", "Dutch"), ("pl", "Polish"), ("ru", "Russian"), ("uk", "Ukrainian"), ("tr", "Turkish"), ("ar", "Arabic"),
         ("hi", "Hindi"), ("ja", "Japanese"), ("ko", "Korean"), ("zh", "Chinese"), ("vi", "Vietnamese"), ("tl", "Tagalog"),
         ("sv", "Swedish"), ("da", "Danish"), ("no", "Norwegian"), ("fi", "Finnish"),
@@ -275,6 +272,7 @@ struct CleanupTab: View {
                         settings.data.replacements.append(Replacement(from: newFrom.trimmingCharacters(in: .whitespaces), to: newTo.trimmingCharacters(in: .whitespaces)))
                         newFrom = ""; newTo = ""
                     }
+                    .buttonStyle(.gradient)
                     .disabled(newFrom.trimmingCharacters(in: .whitespaces).isEmpty || newTo.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
@@ -321,7 +319,7 @@ struct PolishStatusRow: View {
             case .error(let e):
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(e).font(.caption).foregroundStyle(.secondary)
-                Button("Retry") { Task { await ollama.ensureRunning() } }.controlSize(.small)
+                Button("Retry") { Task { await ollama.ensureRunning() } }.buttonStyle(.glass)
             case .off, .ready:
                 if settings.data.polishReady && (ollama.hasModel(settings.data.ollamaModel) || !ollama.isReady) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
@@ -338,7 +336,7 @@ struct PolishStatusRow: View {
                             await ollama.prepareIfActive()
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.gradient)
                 }
             }
         }
@@ -355,39 +353,50 @@ struct HistoryTab: View {
         search.isEmpty ? history.entries : history.entries.filter { $0.text.localizedCaseInsensitiveContains(search) }
     }
 
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             HStack {
-                TextField("Search your dictations", text: $search).textFieldStyle(.roundedBorder)
-                Button("Clear all", role: .destructive) { history.clear() }.disabled(history.entries.isEmpty)
+                Text("History").font(.system(size: 15, weight: .bold)).gradientText()
+                Spacer()
+                TextField("Search your dictations", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
+                Button("Clear all", role: .destructive) { history.clear() }.buttonStyle(.glass).disabled(history.entries.isEmpty)
             }
-            .padding(14)
             if filtered.isEmpty {
                 Spacer()
                 VStack(spacing: 6) {
-                    Image(systemName: "clock").font(.system(size: 30)).foregroundStyle(.secondary)
+                    Image(systemName: "clock").font(.system(size: 30)).foregroundStyle(Theme.wave)
                     Text(history.entries.isEmpty ? "Everything you dictate is saved here, on this Mac only." : "No matches").foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                List(filtered) { e in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(e.text).textSelection(.enabled)
-                        HStack {
-                            Text(e.date, style: .relative) + Text(" ago")
-                            if !e.appName.isEmpty { Text("· \(e.appName)") }
-                            Spacer()
-                            Button("Copy") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(e.text, forType: .string)
-                            }.controlSize(.mini)
-                            Button { history.delete(e) } label: { Image(systemName: "trash") }.controlSize(.mini)
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(filtered) { e in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(e.text).textSelection(.enabled)
+                                HStack {
+                                    Text(e.date, style: .relative) + Text(" ago")
+                                    if !e.appName.isEmpty { Text("· \(e.appName)") }
+                                    Spacer()
+                                    Button("Copy") {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(e.text, forType: .string)
+                                    }.buttonStyle(.glass)
+                                    Button { history.delete(e) } label: { Image(systemName: "trash") }.buttonStyle(.glass)
+                                }
+                                .font(.caption).foregroundStyle(.secondary)
+                            }
+                            .themedCard(padding: 12)
                         }
-                        .font(.caption).foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 2)
                 }
             }
         }
+        .padding(.horizontal, 24).padding(.top, 34).padding(.bottom, 18)
+        .frame(maxWidth: 720, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

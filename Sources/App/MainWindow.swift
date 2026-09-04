@@ -28,15 +28,11 @@ final class PageHolder: ObservableObject { @Published var page: Page = .home }
 
 struct MainView: View {
     @ObservedObject var holder: PageHolder
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        NavigationSplitView {
-            List(Page.allCases, selection: $holder.page) { p in
-                Label(p.title, systemImage: p.icon).tag(p)
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 190, max: 210)
-        } detail: {
+        HStack(spacing: 0) {
+            Sidebar(holder: holder)
             Group {
                 switch holder.page {
                 case .home: HomePage(holder: holder)
@@ -46,10 +42,46 @@ struct MainView: View {
                 case .history: HistoryTab()
                 }
             }
-            .navigationTitle(holder.page.title)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .background(CanvasBackground())
         .frame(minWidth: 820, minHeight: 600)
         .tint(Theme.accent)
+    }
+}
+
+/// Coloured sidebar: the app's name up top, one pill per page, the selected one painted with the wave gradient.
+struct Sidebar: View {
+    @ObservedObject var holder: PageHolder
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 28, height: 28)
+                Text("talk at a normal\nvolume flow").font(.system(size: 11, weight: .semibold)).lineSpacing(-1).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14).padding(.top, 34).padding(.bottom, 14)
+            ForEach(Page.allCases) { p in
+                let selected = holder.page == p
+                Button { holder.page = p } label: {
+                    Label(p.title, systemImage: p.icon)
+                        .font(.system(size: 13, weight: selected ? .semibold : .medium))
+                        .foregroundStyle(selected ? .white : .primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(selected ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(Color.clear), in: RoundedRectangle(cornerRadius: 9))
+                        .shadow(color: selected ? Theme.violet.opacity(0.35) : .clear, radius: 6, y: 2)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
+            }
+            Spacer()
+        }
+        .frame(width: 190)
+        .frame(maxHeight: .infinity)
+        .background(Theme.glass(scheme))
+        .overlay(alignment: .trailing) { Rectangle().fill(Theme.hairline(scheme)).frame(width: 1) }
     }
 }
 
@@ -65,6 +97,7 @@ struct HomePage: View {
     @ObservedObject var controller = DictationController.shared
     @ObservedObject var ollama = OllamaManager.shared
     @ObservedObject var updater = Updater.shared
+    @Environment(\.colorScheme) private var scheme
     @State private var mic = Permissions.microphoneGranted
     @State private var ax = Permissions.accessibilityGranted
     @State private var tryText = ""
@@ -111,7 +144,7 @@ struct HomePage: View {
         HStack(spacing: 12) {
             Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 60, height: 60)
             VStack(alignment: .leading, spacing: 2) {
-                Text("talkatanormalvolumeflow").font(.system(size: 22, weight: .bold))
+                Text("talkatanormalvolumeflow").font(.system(size: 24, weight: .bold)).gradientText()
                 Text(s.shortcut.isMouseButton
                      ? "Hold a mouse button. Talk normally. Let go. Your words appear wherever your cursor is."
                      : "Hold a key. Talk normally. Let go. Your words appear wherever your cursor is.")
@@ -134,7 +167,7 @@ struct HomePage: View {
                 Text("Version \(v) is available.").fontWeight(.semibold)
                 Text("You have \(Updater.currentVersion). The app will restart.").foregroundStyle(.secondary)
                 Spacer()
-                Button(Updater.canSelfUpdate ? "Update Now" : "Get It") { updater.installAvailable() }.buttonStyle(.borderedProminent)
+                Button(Updater.canSelfUpdate ? "Update Now" : "Get It") { updater.installAvailable() }.buttonStyle(.gradient)
             }
         case .downloading:
             bannerRow(icon: "arrow.down.circle", color: Theme.accent) { ProgressView().controlSize(.small); Text("Downloading the update…") }
@@ -144,7 +177,7 @@ struct HomePage: View {
             bannerRow(icon: "exclamationmark.triangle.fill", color: .orange) {
                 Text(e).fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                Button("Open Download Page") { NSWorkspace.shared.open(Updater.releasesPage) }
+                Button("Open Download Page") { NSWorkspace.shared.open(Updater.releasesPage) }.buttonStyle(.glass)
             }
         }
     }
@@ -156,7 +189,8 @@ struct HomePage: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(color.opacity(0.35), lineWidth: 1))
     }
 
     // MARK: setup
@@ -176,19 +210,19 @@ struct HomePage: View {
                 Button("Allow Microphone") {
                     Task { _ = await Permissions.requestMicrophone(); mic = Permissions.microphoneGranted
                         if !mic { Permissions.openMicrophoneSettings() } }
-                }.buttonStyle(.borderedProminent)
+                }.buttonStyle(.gradient)
             }
             setupRow(2, "Allow accessibility", done: ax,
                      detail: "Lets the app notice your shortcut and type for you. Click the button, then turn ON the switch next to talkatanormalvolumeflow.") {
                 Button("Open Accessibility Settings") { Permissions.promptAccessibility(); Permissions.openAccessibilitySettings() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.gradient)
             }
             setupRow(3, "Download the speech recognizer", done: modelReady,
                      detail: "About \(model.sizeMB) MB, one time. It lives on this Mac, so your voice is never uploaded.") {
                 if let p = models.progress[model.id] {
                     HStack { ProgressView(value: p).frame(width: 220); Text("\(Int(p * 100))%").monospacedDigit() }
                 } else {
-                    Button("Download") { models.download(model) }.buttonStyle(.borderedProminent)
+                    Button("Download") { models.download(model) }.buttonStyle(.gradient)
                     if let e = models.errors[model.id] { Text(e).font(.caption).foregroundStyle(.red) }
                 }
             }
@@ -197,8 +231,7 @@ struct HomePage: View {
                 polishAction
             }
         }
-        .padding(16)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+        .themedCard()
     }
 
     @ViewBuilder private var polishAction: some View {
@@ -210,12 +243,12 @@ struct HomePage: View {
         case .error(let e):
             VStack(alignment: .leading, spacing: 6) {
                 Text(e).font(.caption).foregroundStyle(.red)
-                HStack { Button("Retry") { startPolishDownload() }; Button("Skip for now") { skipPolish() } }
+                HStack { Button("Retry") { startPolishDownload() }.buttonStyle(.gradient); Button("Skip for now") { skipPolish() }.buttonStyle(.glass) }
             }
         case .off, .ready:
             HStack(spacing: 10) {
-                Button("Download AI Polish") { startPolishDownload() }.buttonStyle(.borderedProminent)
-                Button("Skip for now") { skipPolish() }
+                Button("Download AI Polish") { startPolishDownload() }.buttonStyle(.gradient)
+                Button("Skip for now") { skipPolish() }.buttonStyle(.glass)
             }
         }
     }
@@ -278,29 +311,29 @@ struct HomePage: View {
                     Image(systemName: "lightbulb.fill").foregroundStyle(.yellow)
                     Text("If the emoji picker pops up: in System Settings → Keyboard, set **“Press 🌐 key to”** to **Do Nothing**.")
                         .font(.callout).fixedSize(horizontal: false, vertical: true)
-                    Button("Open") { Permissions.openKeyboardSettings() }.controlSize(.small)
+                    Button("Open") { Permissions.openKeyboardSettings() }.buttonStyle(.glass)
                 }
             }
         }
-        .padding(16)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+        .themedCard()
     }
 
     private var arrow: some View {
-        Image(systemName: "arrow.right").font(.title3).foregroundStyle(.secondary).padding(.horizontal, 10)
+        Image(systemName: "arrow.right").font(.title3).foregroundStyle(Theme.wave).padding(.horizontal, 10)
     }
 
     private func stepBox(icon: String, title: String, subtitle: String, highlight: Bool = false) -> some View {
         VStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 22)).foregroundStyle(highlight ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(.secondary))
-            Text(title).font(.system(size: 16, weight: .bold))
-            Text(subtitle).font(.callout).foregroundStyle(highlight ? Theme.accent : .secondary).multilineTextAlignment(.center)
+            Image(systemName: icon).font(.system(size: 22)).foregroundStyle(highlight ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.wave))
+            Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(highlight ? .white : .primary)
+            Text(subtitle).font(.callout).foregroundStyle(highlight ? .white.opacity(0.9) : .secondary).multilineTextAlignment(.center)
                 .fontWeight(highlight ? .semibold : .regular)
         }
         .frame(maxWidth: .infinity, minHeight: 84)
         .padding(10)
-        .background(highlight ? Theme.accent.opacity(0.12) : Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-        .overlay { if highlight { RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.wave, lineWidth: 1.5) } }
+        .background(highlight ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(Theme.glassStrong(scheme)), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(highlight ? Color.white.opacity(0.3) : Theme.hairline(scheme), lineWidth: 1))
+        .shadow(color: highlight ? Theme.violet.opacity(0.35) : .clear, radius: 8, y: 3)
     }
 
     private var tryCard: some View {
@@ -314,17 +347,17 @@ struct HomePage: View {
                 .font(.system(size: 15))
                 .frame(minHeight: 80, maxHeight: 140)
                 .padding(6)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(tryFocused ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(Color.secondary.opacity(0.3)), lineWidth: tryFocused ? 2 : 1))
+                .scrollContentBackground(.hidden)
+                .background(Theme.well(scheme), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(tryFocused ? AnyShapeStyle(Theme.wave) : AnyShapeStyle(Theme.hairline(scheme)), lineWidth: tryFocused ? 2 : 1))
                 .focused($tryFocused)
             HStack {
                 statusPill
                 Spacer()
-                Button("Clear") { tryText = "" }.disabled(tryText.isEmpty)
+                Button("Clear") { tryText = "" }.buttonStyle(.glass).disabled(tryText.isEmpty)
             }
         }
-        .padding(16)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+        .themedCard()
     }
 
     @ViewBuilder private var statusPill: some View {

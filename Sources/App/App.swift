@@ -200,7 +200,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             w.title = "talkatanormalvolumeflow"
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             w.titlebarAppearsTransparent = true
-            w.toolbarStyle = .unified
+            w.titleVisibility = .hidden
+            w.backgroundColor = .clear
+            w.isMovableByWindowBackground = true
             w.isReleasedWhenClosed = false
             w.setContentSize(NSSize(width: 960, height: 680))
             w.center()

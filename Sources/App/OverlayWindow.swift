@@ -77,7 +77,7 @@ struct OverlayView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.15)))
+        .overlay(Capsule().strokeBorder(Theme.wave.opacity(0.8), lineWidth: 1.5))
         .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
         .frame(width: 320, height: 56)
     }
