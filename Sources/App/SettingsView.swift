@@ -85,7 +85,28 @@ struct GeneralTab: View {
             }
             Card(title: "Behavior") {
                 Toggle("Open automatically when I log in", isOn: launchAtLogin)
-                Toggle("Play a soft sound when listening starts and stops", isOn: $settings.data.playSounds)
+                Toggle("Play a sound when listening starts and stops", isOn: $settings.data.playSounds)
+                if settings.data.playSounds {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
+                        ForEach(SoundTheme.all) { t in
+                            let selected = settings.data.soundTheme == t.id
+                            Button {
+                                settings.data.soundTheme = t.id
+                                Sounds.preview(theme: t.id)
+                            } label: {
+                                VStack(spacing: 2) {
+                                    Text(t.name).font(.system(size: 13, weight: .semibold))
+                                    Text(t.blurb).font(.system(size: 10)).opacity(0.8).lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass(selected: selected))
+                        }
+                    }
+                    .padding(.leading, 20)
+                    Text("Click one to hear it. The first sound plays when you start holding, the second when you let go.")
+                        .font(.caption).foregroundStyle(.secondary).padding(.leading, 20)
+                }
                 Toggle("Add a space after each dictation (so you can keep talking)", isOn: $settings.data.trailingSpace)
             }
             Text("If the shortcut stops working after an update: remove the app from System Settings → Privacy & Security → Accessibility and add it back.")

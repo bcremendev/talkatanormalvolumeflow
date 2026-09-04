@@ -211,9 +211,3 @@ final class DictationController: ObservableObject {
         }
     }
 }
-
-enum Sounds {
-    static func start() { NSSound(named: "Pop")?.play() }
-    static func stop() { NSSound(named: "Tink")?.play() }
-    static func cancel() { NSSound(named: "Bottle")?.play() }
-}

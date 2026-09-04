@@ -105,6 +105,7 @@ struct SettingsData: Codable, Equatable {
     var mode: ActivationMode = .hold
     var launchAtLogin: Bool = false
     var playSounds: Bool = true
+    var soundTheme: String = "chime"
     var trailingSpace: Bool = true
 
     var modelId: String = "small.en"
@@ -135,7 +136,7 @@ struct SettingsData: Codable, Equatable {
 
     // Tolerant decoding: new fields get defaults instead of wiping the user's settings.
     private enum K: String, CodingKey {
-        case shortcut, mode, launchAtLogin, playSounds, trailingSpace, modelId, language, removeFillers, fillerWords,
+        case shortcut, mode, launchAtLogin, playSounds, soundTheme, trailingSpace, modelId, language, removeFillers, fillerWords,
              voiceCommands, replacements, ollamaModel, polishReady, polishSkipped, hasCompletedOnboarding
     }
     init(from decoder: Decoder) throws {
@@ -145,6 +146,7 @@ struct SettingsData: Codable, Equatable {
         mode = try c.decodeIfPresent(ActivationMode.self, forKey: .mode) ?? d.mode
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         playSounds = try c.decodeIfPresent(Bool.self, forKey: .playSounds) ?? d.playSounds
+        soundTheme = try c.decodeIfPresent(String.self, forKey: .soundTheme) ?? d.soundTheme
         trailingSpace = try c.decodeIfPresent(Bool.self, forKey: .trailingSpace) ?? d.trailingSpace
         modelId = try c.decodeIfPresent(String.self, forKey: .modelId) ?? d.modelId
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? d.language
@@ -161,6 +163,7 @@ struct SettingsData: Codable, Equatable {
         var c = encoder.container(keyedBy: K.self)
         try c.encode(shortcut, forKey: .shortcut); try c.encode(mode, forKey: .mode)
         try c.encode(launchAtLogin, forKey: .launchAtLogin); try c.encode(playSounds, forKey: .playSounds)
+        try c.encode(soundTheme, forKey: .soundTheme)
         try c.encode(trailingSpace, forKey: .trailingSpace); try c.encode(modelId, forKey: .modelId)
         try c.encode(language, forKey: .language); try c.encode(removeFillers, forKey: .removeFillers)
         try c.encode(fillerWords, forKey: .fillerWords); try c.encode(voiceCommands, forKey: .voiceCommands)
