@@ -23,17 +23,13 @@ That downloads the prebuilt whisper.cpp xcframework and Ollama into `vendor/`, c
 
 ### Notarize (so coworkers get no Gatekeeper warnings)
 
-One-time setup with an [app-specific password](https://appleid.apple.com):
+One-time, interactive (it walks you through creating an app-specific password):
 
 ```bash
-xcrun notarytool store-credentials tanvf --apple-id you@example.com --team-id YOURTEAMID --password xxxx-xxxx-xxxx-xxxx
+./scripts/setup-notarization.sh
 ```
 
-Then:
-
-```bash
-NOTARY_PROFILE=tanvf ./scripts/build.sh
-```
+After that every `./scripts/release.sh X.Y.Z` notarizes and staples automatically.
 
 Options: `SKIP_OLLAMA=1` (smaller app, no bundled AI polish), `VERSION=1.2.0`, `BUNDLE_ID=com.yourco.tanvf`, `SIGN_IDENTITY="Developer ID Application: ..."`.
 

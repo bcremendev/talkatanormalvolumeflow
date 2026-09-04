@@ -4,6 +4,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${1:?usage: release.sh <version>}"
+# Notarize automatically if credentials were saved with scripts/setup-notarization.sh
+if [[ -z "${NOTARY_PROFILE:-}" ]] && xcrun notarytool history --keychain-profile tanvf >/dev/null 2>&1; then
+  export NOTARY_PROFILE=tanvf
+fi
+[[ -n "${NOTARY_PROFILE:-}" ]] && echo "▸ will notarize with profile $NOTARY_PROFILE" || echo "▸ NOT notarizing (run ./scripts/setup-notarization.sh once to fix)"
 VERSION="$VERSION" ./scripts/build.sh
 git add -A && git -c user.name="Brent Cremen" -c user.email="brent@zenmaid.com" commit -qm "Release $VERSION" || true
 git push -q
