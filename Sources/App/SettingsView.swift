@@ -1,21 +1,11 @@
 import SwiftUI
 import ServiceManagement
 
-enum SettingsTab: String, Hashable { case general, transcription, cleanup, history, permissions }
-
-struct SettingsView: View {
-    @ObservedObject var settings = Settings.shared
-    @Binding var tab: SettingsTab
-
-    var body: some View {
-        TabView(selection: $tab) {
-            GeneralTab().tabItem { Label("General", systemImage: "keyboard") }.tag(SettingsTab.general)
-            TranscriptionTab().tabItem { Label("Transcription", systemImage: "waveform") }.tag(SettingsTab.transcription)
-            CleanupTab().tabItem { Label("Cleanup", systemImage: "wand.and.stars") }.tag(SettingsTab.cleanup)
-            HistoryTab().tabItem { Label("History", systemImage: "clock") }.tag(SettingsTab.history)
-            PermissionsTab().tabItem { Label("Permissions", systemImage: "lock.shield") }.tag(SettingsTab.permissions)
-        }
-        .frame(width: 560, height: 480)
+enum LaunchAtLogin {
+    static func set(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch { NSLog("Launch at login failed: \(error)") }
     }
 }
 
@@ -77,9 +67,7 @@ struct GeneralTab: View {
     private var launchAtLogin: Binding<Bool> {
         Binding(get: { settings.data.launchAtLogin }, set: { on in
             settings.data.launchAtLogin = on
-            do {
-                if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-            } catch { NSLog("Launch at login failed: \(error)") }
+            LaunchAtLogin.set(on)
         })
     }
 
@@ -348,7 +336,7 @@ struct PermissionsTab: View {
                 }
             }
             Section {
-                Text("If you rebuilt or updated the app and the shortcut stopped working, remove talkatanormalvolumeflow from the Accessibility list and add it again.")
+                Text("If you updated the app and the shortcut stopped working, remove talkatanormalvolumeflow from the Accessibility list and add it again, then relaunch.")
                     .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Shortcut listener", value: DictationController.shared.hotkeys.isRunning ? "Active" : "Not running (grant Accessibility, then relaunch)")
             }

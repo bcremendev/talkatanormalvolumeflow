@@ -16,14 +16,12 @@ enum Main {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     static var shared: AppDelegate?
 
     private var statusItem: NSStatusItem!
-    private var settingsWindow: NSWindow?
-    private var onboardingWindow: NSWindow?
-    private var settingsTab = SettingsTabHolder()
-    private var observers: [Any] = []
+    private var mainWindow: NSWindow?
+    private let pageHolder = PageHolder()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -33,9 +31,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller.preloadModel()
         let started = controller.startHotkeys()
 
+        MoveToApplications.offerIfNeeded()
+
+        // Always show the window on a normal launch (double-click). It's the app's face.
         let s = Settings.shared.data
-        if !s.hasCompletedOnboarding || !started || !Permissions.microphoneGranted {
-            showOnboarding()
+        let launchedAtLogin = NSAppleEventManager.shared().currentAppleEvent?.eventID == kAEOpenApplication
+            && NSAppleEventManager.shared().currentAppleEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+        if !launchedAtLogin || !s.hasCompletedOnboarding || !started || !Permissions.microphoneGranted {
+            showMain(page: .home)
         }
         if s.ollamaEnabled { Task { await OllamaManager.shared.ensureRunning() } }
 
@@ -46,6 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !c.hotkeys.isRunning, Permissions.accessibilityGranted { _ = c.startHotkeys() }
             self.updateIcon()
         }
+    }
+
+    /// Double-clicking the app icon while it's already running brings the window back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showMain(page: pageHolder.page)
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -121,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(ai)
 
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Open talkatanormalvolumeflow…", action: #selector(openMain), keyEquivalent: "o").target = self
         menu.addItem(withTitle: "History…", action: #selector(openHistory), keyEquivalent: "h").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         if !Permissions.accessibilityGranted || !Permissions.microphoneGranted {
@@ -138,45 +148,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Settings.shared.data.ollamaEnabled.toggle()
         if Settings.shared.data.ollamaEnabled { Task { await OllamaManager.shared.ensureRunning() } } else { OllamaManager.shared.stop() }
     }
-    @objc private func openHistory() { showSettings(tab: .history) }
-    @objc private func openSettings() { showSettings(tab: .general) }
-    @objc private func openPermissions() { showSettings(tab: .permissions) }
+    @objc private func openMain() { showMain(page: .home) }
+    @objc private func openHistory() { showMain(page: .history) }
+    @objc private func openSettings() { showMain(page: .shortcut) }
+    @objc private func openPermissions() { showMain(page: .permissions) }
 
-    // MARK: windows
+    // MARK: window
 
-    func showSettings(tab: SettingsTab) {
-        settingsTab.tab = tab
-        if settingsWindow == nil {
-            let view = SettingsRoot(holder: settingsTab)
-            let w = NSWindow(contentViewController: NSHostingController(rootView: view))
-            w.title = "talkatanormalvolumeflow Settings"
-            w.styleMask = [.titled, .closable, .miniaturizable]
+    func showMain(page: Page) {
+        pageHolder.page = page
+        if mainWindow == nil {
+            let w = NSWindow(contentViewController: NSHostingController(rootView: MainView(holder: pageHolder)))
+            w.title = "talkatanormalvolumeflow"
+            w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+            w.titlebarAppearsTransparent = true
+            w.toolbarStyle = .unified
             w.isReleasedWhenClosed = false
+            w.setContentSize(NSSize(width: 960, height: 680))
             w.center()
-            settingsWindow = w
+            w.setFrameAutosaveName("MainWindow")
+            w.delegate = self
+            mainWindow = w
         }
+        // Show a Dock icon while the window is open so it behaves like a normal app.
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        mainWindow?.makeKeyAndOrderFront(nil)
     }
 
-    func showOnboarding() {
-        if onboardingWindow == nil {
-            let view = OnboardingView { [weak self] in self?.onboardingWindow?.close() }
-            let w = NSWindow(contentViewController: NSHostingController(rootView: view))
-            w.title = "Welcome"
-            w.styleMask = [.titled, .closable]
-            w.isReleasedWhenClosed = false
-            w.center()
-            onboardingWindow = w
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        onboardingWindow?.makeKeyAndOrderFront(nil)
+    func windowWillClose(_ notification: Notification) {
+        // Back to menu-bar-only when the window closes; the hotkey keeps working.
+        DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
     }
 }
 
-final class SettingsTabHolder: ObservableObject { @Published var tab: SettingsTab = .general }
+/// Offers to move the app into /Applications when it was launched from a DMG or Downloads.
+@MainActor
+enum MoveToApplications {
+    static func offerIfNeeded() {
+        let url = Bundle.main.bundleURL
+        let path = url.path
+        guard path.hasSuffix(".app"),
+              !path.hasPrefix("/Applications/"),
+              !path.hasPrefix(NSHomeDirectory() + "/Applications/"),
+              !path.contains("/.build/"), !path.contains("/dist/") else { return }   // dev builds
+        if UserDefaults.standard.bool(forKey: "declinedMoveToApplications") { return }
 
-struct SettingsRoot: View {
-    @ObservedObject var holder: SettingsTabHolder
-    var body: some View { SettingsView(tab: $holder.tab) }
+        let alert = NSAlert()
+        alert.messageText = "Move talkatanormalvolumeflow to your Applications folder?"
+        alert.informativeText = "Apps work best from the Applications folder, and macOS remembers the permissions you grant. This just takes a second."
+        alert.addButton(withTitle: "Move to Applications")
+        alert.addButton(withTitle: "Not Now")
+        alert.alertStyle = .informational
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            UserDefaults.standard.set(true, forKey: "declinedMoveToApplications")
+            return
+        }
+        let dest = URL(fileURLWithPath: "/Applications").appendingPathComponent(url.lastPathComponent)
+        do {
+            let fm = FileManager.default
+            if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
+            // Copy (not move): reading our own bundle never triggers a folder-access prompt, deleting from Downloads would.
+            try fm.copyItem(at: url, to: dest)
+            // Relaunch from the new location.
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            task.arguments = ["-n", dest.path]
+            try task.run()
+            NSApp.terminate(nil)
+        } catch {
+            let err = NSAlert()
+            err.messageText = "Couldn't move the app"
+            err.informativeText = "\(error.localizedDescription)\n\nYou can drag it into Applications yourself from Finder."
+            err.runModal()
+        }
+    }
 }

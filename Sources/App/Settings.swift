@@ -63,6 +63,8 @@ enum KeyNames {
         100: "F8", 101: "F9", 103: "F11", 105: "F13", 107: "F14", 109: "F10", 111: "F12", 113: "F15", 118: "F4",
         120: "F2", 122: "F1", 123: "←", 124: "→", 125: "↓", 126: "↑", 114: "Help", 115: "Home", 116: "PgUp",
         117: "Fwd Delete", 119: "End", 121: "PgDn",
+        54: "Right ⌘ Command", 55: "Left ⌘ Command", 56: "Left ⇧ Shift", 57: "Caps Lock", 58: "Left ⌥ Option",
+        59: "Left ⌃ Control", 60: "Right ⇧ Shift", 61: "Right ⌥ Option", 62: "Right ⌃ Control", 63: "Fn / Globe 🌐",
     ]
     static func name(for code: UInt16) -> String { map[code] ?? "Key \(code)" }
 }

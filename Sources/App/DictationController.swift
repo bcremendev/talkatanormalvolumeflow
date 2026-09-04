@@ -108,7 +108,7 @@ final class DictationController: ObservableObject {
         let model = WhisperModel.byId(settings.modelId)
         guard ModelManager.shared.isDownloaded(model) else {
             showNotice("Download a speech model first (Settings → Transcription)", seconds: 3)
-            AppDelegate.shared?.showSettings(tab: .transcription)
+            AppDelegate.shared?.showMain(page: .transcription)
             return
         }
         if !WhisperEngine.shared.isLoaded { preloadModel() }

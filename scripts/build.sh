@@ -94,14 +94,47 @@ else
   echo "  (skipping notarization: set NOTARY_PROFILE to notarize)"
 fi
 
-# ---- dmg --------------------------------------------------------------------
+# ---- dmg (drag-to-Applications layout with background) ------------------
 DMG="$DIST/$APP_NAME-$VERSION.dmg"
-rm -f "$DMG"
+rm -f "$DMG" "$DIST/rw.dmg"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/" && ln -s /Applications "$STAGE/Applications"
-cp COWORKERS.md "$STAGE/READ ME FIRST.md" 2>/dev/null || true
-hdiutil create -quiet -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+mkdir -p "$STAGE/.background" && cp Resources/dmg-background.png "$STAGE/.background/background.png"
+hdiutil create -quiet -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDRW -fs HFS+ "$DIST/rw.dmg"
 rm -rf "$STAGE"
+MOUNT="/Volumes/$APP_NAME"
+hdiutil detach -quiet "$MOUNT" 2>/dev/null || true
+hdiutil attach -quiet -readwrite -noverify -noautoopen "$DIST/rw.dmg"
+sleep 1
+# Lay out the Finder window: app on the left, Applications on the right, background image, no toolbar.
+osascript <<APPLESCRIPT || echo "  (Finder layout skipped: allow Terminal to control Finder in System Settings → Privacy → Automation)"
+tell application "Finder"
+  tell disk "$APP_NAME"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {200, 120, 860, 520}
+    set opts to the icon view options of container window
+    set arrangement of opts to not arranged
+    set icon size of opts to 128
+    set text size of opts to 13
+    set background picture of opts to file ".background:background.png"
+    set position of item "$APP_NAME.app" of container window to {165, 195}
+    set position of item "Applications" of container window to {495, 195}
+    close
+    open
+    update without registering applications
+    delay 1
+    close
+  end tell
+end tell
+APPLESCRIPT
+sync
+hdiutil detach -quiet "$MOUNT" || (sleep 2; hdiutil detach -force "$MOUNT")
+hdiutil convert -quiet "$DIST/rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$DMG"
+rm -f "$DIST/rw.dmg"
+"${SIGN[@]}" "$DMG" 2>/dev/null || true
 if [[ -n "${NOTARY_PROFILE:-}" && "$SIGN_IDENTITY" != "-" ]]; then
   xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait >/dev/null && xcrun stapler staple "$DMG"
 fi
