@@ -56,14 +56,14 @@ final class DictationController: ObservableObject {
     func preloadModel() {
         let model = WhisperModel.byId(settings.modelId)
         guard ModelManager.shared.isDownloaded(model) else {
-            modelStatus = "Model \(model.name) not downloaded"
+            modelStatus = "Speech recognizer not downloaded yet"
             return
         }
-        modelStatus = "Loading \(model.name)…"
+        modelStatus = "Getting ready…"
         Task.detached(priority: .userInitiated) {
             do {
                 try await WhisperEngine.shared.load(path: ModelManager.shared.path(for: model).path)
-                await MainActor.run { self.modelStatus = "Ready · \(model.name)" }
+                await MainActor.run { self.modelStatus = "Ready · \(model.tier.title) accuracy" }
             } catch {
                 await MainActor.run { self.modelStatus = error.localizedDescription }
             }

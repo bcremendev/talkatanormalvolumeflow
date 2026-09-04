@@ -159,9 +159,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if !Permissions.accessibilityGranted || !Permissions.microphoneGranted {
             menu.addItem(withTitle: "⚠️ Finish Setup…", action: #selector(openMain), keyEquivalent: "").target = self
         }
-        if let v = Updater.shared.availableVersion {
-            menu.addItem(withTitle: "⬆️ Update to version \(v)…", action: #selector(openMain), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        switch Updater.shared.state {
+        case .available(let v, _):
+            let item = NSMenuItem(title: "⬆️ Update to version \(v) now", action: #selector(installUpdate), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        case .downloading, .installing:
+            let item = NSMenuItem(title: "Updating…", action: nil, keyEquivalent: ""); item.isEnabled = false
+            menu.addItem(item)
+        default:
+            menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         }
+        let ver = NSMenuItem(title: "Version \(Updater.currentVersion)", action: nil, keyEquivalent: ""); ver.isEnabled = false
+        menu.addItem(ver)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit talkatanormalvolumeflow", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
@@ -174,6 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
     @objc private func openMain() { showMain(page: .home) }
     @objc private func checkForUpdates() { showMain(page: .home); Task { await Updater.shared.check(quiet: false) } }
+    @objc private func installUpdate() { showMain(page: .home); Updater.shared.installAvailable() }
     @objc private func openHistory() { showMain(page: .history) }
 
 

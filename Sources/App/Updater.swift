@@ -49,6 +49,8 @@ final class Updater: ObservableObject {
         var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest")!)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 15
+        // GitHub caches this answer for about a minute; a manual check must never show a stale "up to date".
+        req.cachePolicy = quiet ? .useProtocolCachePolicy : .reloadIgnoringLocalAndRemoteCacheData
         do {
             let (data, _) = try await URLSession.shared.data(for: req)
             let rel = try JSONDecoder().decode(Release.self, from: data)
