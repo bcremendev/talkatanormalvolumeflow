@@ -108,6 +108,25 @@ struct TextCleaner {
         return out
     }
 
+    /// True when the transcript shows signs the AI polish can actually improve: spoken self-corrections,
+    /// repeated/stuttered words, or filler phrases the rule-based cleaner doesn't touch. Whisper already
+    /// punctuates and capitalizes, so for a clean sentence the (1–2 s) AI pass would only reproduce it.
+    static func needsPolish(raw: String) -> Bool {
+        let t = raw.lowercased()
+        // Whole-word matches only ("um" must not match "volume").
+        let cues = ["no wait", "wait no", "i mean", "i meant", "sorry", "actually", "scratch that", "rather", "make that",
+                    "correction", "not that", "instead", "no no", "er", "uh", "uhm", "um", "hmm", "you know", "kind of", "sort of",
+                    "basically", "literally", "so yeah", "and yeah", "okay so"]
+        let alt = cues.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        if t.range(of: "\\b(?:\(alt))\\b", options: .regularExpression) != nil { return true }
+        if t.contains(", no,") || t.contains("like,") { return true }
+        // Immediate word repeats: "they they", "the the", "I I".
+        if t.range(of: #"\b(\w+)[,]?\s+\1\b"#, options: .regularExpression) != nil { return true }
+        // Run-on: long stretch without any punctuation.
+        if t.count > 140, t.range(of: #"[.!?]"#, options: .regularExpression) == nil { return true }
+        return false
+    }
+
     /// Words to bias Whisper toward (custom vocabulary) plus a style hint.
     static func whisperPrompt(from settings: SettingsData) -> String {
         var words = settings.replacements.map(\.to).filter { !$0.isEmpty }

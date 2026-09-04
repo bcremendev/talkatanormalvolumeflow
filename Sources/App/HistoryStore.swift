@@ -7,6 +7,8 @@ struct HistoryEntry: Codable, Identifiable, Equatable {
     var rawText: String
     var appName: String
     var durationSeconds: Double
+    var processingSeconds: Double? = nil    // let-go → text inserted
+    var polished: Bool? = nil               // whether the AI pass ran
 }
 
 final class HistoryStore: ObservableObject {

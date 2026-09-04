@@ -76,9 +76,11 @@ final class WhisperEngine {
                 if audio.count < minSamples { audio.append(contentsOf: [Float](repeating: 0, count: minSamples - audio.count)) }
                 audio.append(contentsOf: [Float](repeating: 0, count: 8000))
 
-                var params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH)
-                params.beam_search.beam_size = 5
-                params.greedy.best_of = 5
+                // Beam search is noticeably more accurate than greedy but several times slower. Overridable for testing.
+                let beam = Int32(ProcessInfo.processInfo.environment["TANVF_BEAM"] ?? "") ?? 5
+                var params = whisper_full_default_params(beam > 1 ? WHISPER_SAMPLING_BEAM_SEARCH : WHISPER_SAMPLING_GREEDY)
+                params.beam_search.beam_size = beam
+                params.greedy.best_of = beam
                 params.n_threads = Int32(max(2, min(8, ProcessInfo.processInfo.activeProcessorCount)))
                 params.translate = false
                 params.no_context = true

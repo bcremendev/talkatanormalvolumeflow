@@ -267,7 +267,7 @@ struct CleanupTab: View {
 
     var body: some View {
         PageScroll {
-            Card(title: "AI polish", subtitle: PolishCopy.short) {
+            Card(title: "AI polish", subtitle: PolishCopy.short + " It only steps in when it hears something to fix, so clean sentences stay instant.") {
                 Toggle("Polish my dictations", isOn: polishToggle).toggleStyle(.switch)
                 if settings.data.ollamaEnabled && !settings.data.polishSkipped { PolishStatusRow() }
             }
@@ -401,6 +401,7 @@ struct HistoryTab: View {
                                 HStack {
                                     Text(e.date, style: .relative) + Text(" ago")
                                     if !e.appName.isEmpty { Text("· \(e.appName)") }
+                                    if let p = e.processingSeconds { Text(String(format: "· %.1f s%@", p, e.polished == true ? " with AI polish" : "")) }
                                     Spacer()
                                     Button("Copy") {
                                         NSPasteboard.general.clearContents()

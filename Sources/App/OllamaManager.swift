@@ -131,7 +131,10 @@ final class OllamaManager: ObservableObject {
     /// Loads the model into memory so the first dictation isn't slow.
     func warmUp(model: String) async {
         guard isReady, hasModel(model) else { return }
-        let body: [String: Any] = ["model": model, "keep_alive": "30m", "messages": [], "stream": false]
+        // Same system prompt as a real request so the server's prefix cache is hot for the first dictation.
+        let body: [String: Any] = ["model": model, "keep_alive": "30m", "stream": false, "options": ["num_predict": 1],
+                                   "messages": [["role": "system", "content": Self.systemPrompt + "\nStyle guidance: " + Settings.shared.data.ollamaStyle],
+                                                ["role": "user", "content": "Transcript:\nhi"]]]
         var req = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
         req.httpMethod = "POST"
         req.timeoutInterval = 120

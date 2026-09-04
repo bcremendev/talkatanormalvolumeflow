@@ -152,11 +152,15 @@ final class DictationController: ObservableObject {
     }
 
     private func process(samples: [Float], duration: Double, settings: SettingsData, app: NSRunningApplication?) async {
+        let t0 = Date()
+        var tLoad = 0.0, tTranscribe = 0.0, tPolish = 0.0
         do {
             let model = WhisperModel.byId(settings.modelId)
             try await WhisperEngine.shared.load(path: ModelManager.shared.path(for: model).path)
+            tLoad = Date().timeIntervalSince(t0)
             let prompt = TextCleaner.whisperPrompt(from: settings)
             let raw = try await WhisperEngine.shared.transcribe(samples: samples, language: settings.language, prompt: prompt)
+            tTranscribe = Date().timeIntervalSince(t0) - tLoad
             var text = TextCleaner(settings: settings).clean(raw)
 
             if text.isEmpty {
@@ -164,13 +168,18 @@ final class DictationController: ObservableObject {
                 return
             }
 
-            if settings.polishActive {
+            var polished = false
+            // The AI pass costs 1–2 s, so only run it when the transcript shows something it can fix.
+            if settings.polishActive, TextCleaner.needsPolish(raw: raw) {
+                let tp = Date()
                 state = .processing("Polishing…")
                 let ollama = OllamaManager.shared
                 await ollama.ensureRunning()
-                if ollama.isReady, let polished = await ollama.cleanup(text, model: settings.ollamaModel, style: settings.ollamaStyle) {
-                    text = polished
+                if ollama.isReady, let out = await ollama.cleanup(text, model: settings.ollamaModel, style: settings.ollamaStyle) {
+                    text = out
+                    polished = true
                 }
+                tPolish = Date().timeIntervalSince(tp)
             }
 
             var toInsert = text
@@ -187,9 +196,13 @@ final class DictationController: ObservableObject {
                 TextInserter.insert(toInsert, method: settings.insertMethod, restoreClipboard: settings.restoreClipboard)
             }
 
+            let total = Date().timeIntervalSince(t0)
+            NSLog("dictation: audio %.1fs · load %.2fs · transcribe %.2fs · polish %.2fs%@ · total %.2fs",
+                  duration, tLoad, tTranscribe, tPolish, polished ? "" : " (skipped)", total)
             if settings.historyEnabled {
                 HistoryStore.shared.add(HistoryEntry(date: Date(), text: text, rawText: raw,
-                                                     appName: app?.localizedName ?? "", durationSeconds: duration))
+                                                     appName: app?.localizedName ?? "", durationSeconds: duration,
+                                                     processingSeconds: total, polished: polished))
             }
             state = .idle
             overlay.hide()
