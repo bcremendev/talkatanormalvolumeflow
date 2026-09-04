@@ -1,7 +1,13 @@
 import AppKit
 import CoreGraphics
 
-/// Global hotkey via a CGEvent tap. Works with lone modifier keys (Fn, Right ⌥...) and key combos.
+/// What the user pressed while the shortcut recorder was armed.
+enum RecordedInput {
+    case key(code: UInt16, flags: CGEventFlags, isModifier: Bool)
+    case mouseButton(Int)
+}
+
+/// Global hotkey via a CGEvent tap. Works with lone modifier keys (Fn, Right ⌥...), key combos and extra mouse buttons.
 @MainActor
 final class HotkeyManager {
     var shortcut: Shortcut = Settings.shared.data.shortcut
@@ -9,8 +15,8 @@ final class HotkeyManager {
     var onRelease: (() -> Void)?
     /// Return true to swallow the Escape key.
     var onEscape: (() -> Bool)?
-    /// When set, the next key press is reported here (keyCode, flags, isModifierKey) instead of acting.
-    var recorder: ((UInt16, CGEventFlags, Bool) -> Void)?
+    /// When set, the next key or mouse-button press is reported here instead of acting.
+    var recorder: ((RecordedInput) -> Void)?
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
@@ -22,6 +28,7 @@ final class HotkeyManager {
     func start() -> Bool {
         if tap != nil { return true }
         let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
+            | (1 << CGEventType.otherMouseDown.rawValue) | (1 << CGEventType.otherMouseUp.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
                                           eventsOfInterest: mask, callback: hotkeyCallback, userInfo: refcon) else {
@@ -50,6 +57,23 @@ final class HotkeyManager {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return pass
         }
+        // Extra mouse buttons (middle, back, forward, thumb buttons on a Logitech MX Master etc.).
+        if type == .otherMouseDown || type == .otherMouseUp {
+            let button = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+            if type == .otherMouseDown, let rec = recorder {
+                recorder = nil
+                rec(.mouseButton(button))
+                return nil
+            }
+            guard let wanted = shortcut.mouseButton, wanted == button else { return pass }
+            if type == .otherMouseDown {
+                if isDown { return nil }
+                isDown = true; onPress?(); return nil
+            }
+            if isDown { isDown = false; onRelease?(); return nil }
+            return pass
+        }
+
         let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags.intersection(Shortcut.relevantFlags)
 
@@ -57,7 +81,7 @@ final class HotkeyManager {
             guard let bit = Shortcut.flag(forModifierKeyCode: keyCode) else { return pass }
             let pressed = event.flags.contains(bit)
             if let rec = recorder {
-                if pressed { recorder = nil; rec(keyCode, [], true) }
+                if pressed { recorder = nil; rec(.key(code: keyCode, flags: [], isModifier: true)) }
                 return pass
             }
             guard shortcut.isModifierKey, keyCode == shortcut.keyCode else { return pass }
@@ -69,13 +93,13 @@ final class HotkeyManager {
 
         if type == .keyDown, let rec = recorder {
             recorder = nil
-            rec(keyCode, flags, false)
+            rec(.key(code: keyCode, flags: flags, isModifier: false))
             return nil
         }
 
         if type == .keyDown, keyCode == 53, let onEscape, onEscape() { return nil }
 
-        guard !shortcut.isModifierKey, keyCode == shortcut.keyCode else { return pass }
+        guard !shortcut.isModifierKey, !shortcut.isMouseButton, keyCode == shortcut.keyCode else { return pass }
         if type == .keyDown {
             let autorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             if isDown { return autorepeat ? nil : pass }

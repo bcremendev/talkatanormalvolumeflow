@@ -15,6 +15,8 @@ final class DictationController: ObservableObject {
     @Published private(set) var state: State = .idle
     @Published private(set) var lastError: String?
     @Published private(set) var modelStatus: String = "Model not loaded"
+    /// Set by the Home page while its "Try it" box is visible. Returns true if it took the text.
+    var localInsertHandler: ((String) -> Bool)?
 
     let recorder = AudioRecorder()
     let hotkeys = HotkeyManager()
@@ -107,7 +109,7 @@ final class DictationController: ObservableObject {
         }
         let model = WhisperModel.byId(settings.modelId)
         guard ModelManager.shared.isDownloaded(model) else {
-            showNotice("Download a speech model first (Settings → Transcription)", seconds: 3)
+            showNotice("Download the speech model first (see the app window)", seconds: 3)
             AppDelegate.shared?.showMain(page: .transcription)
             return
         }
@@ -168,9 +170,15 @@ final class DictationController: ObservableObject {
             if settings.trailingSpace, !toInsert.hasSuffix("\n") { toInsert += " " }
 
             state = .processing("Inserting…")
-            // Make sure the original app is frontmost before pasting.
-            if let app, app != NSWorkspace.shared.frontmostApplication { app.activate() ; try? await Task.sleep(nanoseconds: 120_000_000) }
-            TextInserter.insert(toInsert, method: settings.insertMethod, restoreClipboard: settings.restoreClipboard)
+            // Dictating into our own window (the "Try it" box): hand the text over directly, no paste needed.
+            let isSelf = app?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+            if isSelf, let handler = localInsertHandler, handler(toInsert) {
+                // handled
+            } else {
+                // Make sure the original app is frontmost before pasting.
+                if let app, app != NSWorkspace.shared.frontmostApplication { app.activate() ; try? await Task.sleep(nanoseconds: 120_000_000) }
+                TextInserter.insert(toInsert, method: settings.insertMethod, restoreClipboard: settings.restoreClipboard)
+            }
 
             if settings.historyEnabled {
                 HistoryStore.shared.add(HistoryEntry(date: Date(), text: text, rawText: raw,

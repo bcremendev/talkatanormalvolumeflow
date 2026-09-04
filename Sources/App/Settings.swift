@@ -14,20 +14,43 @@ enum InsertMethod: String, Codable, CaseIterable, Identifiable {
     var label: String { self == .paste ? "Paste (fast, recommended)" : "Type keystrokes (slower, works everywhere)" }
 }
 
-/// A global shortcut. Either a lone modifier key (Fn, Right Option...) or a regular key plus modifiers.
+/// A global shortcut. A lone modifier key (Fn, Right Option...), a regular key plus modifiers, or an extra mouse button.
 struct Shortcut: Codable, Equatable, Hashable {
     var keyCode: UInt16
     var modifiers: UInt64      // CGEventFlags raw value (only meaningful when !isModifierKey)
     var isModifierKey: Bool
     var name: String
+    /// CGEvent button number for a mouse-button shortcut (2 = middle, 3 = back, 4 = forward, 5+ = extra buttons).
+    /// Optional so settings saved before this field existed still decode.
+    var mouseButton: Int? = nil
+
+    var isMouseButton: Bool { mouseButton != nil }
     /// Human-readable name (modifier keys are always named from the key code, so old saved names can't go stale).
-    var displayName: String { isModifierKey ? KeyNames.name(for: keyCode) : name }
+    var displayName: String {
+        if let b = mouseButton { return Shortcut.mouseButtonName(b) }
+        return isModifierKey ? KeyNames.name(for: keyCode) : name
+    }
+    /// SF Symbol for the "how to" illustration.
+    var symbol: String { isMouseButton ? "computermouse.fill" : "hand.point.up.left.fill" }
 
     static let fn           = Shortcut(keyCode: 63, modifiers: 0, isModifierKey: true, name: "Fn / Globe 🌐")
     static let rightOption  = Shortcut(keyCode: 61, modifiers: 0, isModifierKey: true, name: "Right ⌥ Option")
     static let rightCommand = Shortcut(keyCode: 54, modifiers: 0, isModifierKey: true, name: "Right ⌘ Command")
     static let rightControl = Shortcut(keyCode: 62, modifiers: 0, isModifierKey: true, name: "Right ⌃ Control")
     static let presets: [Shortcut] = [fn, rightOption, rightCommand, rightControl]
+
+    static func mouse(_ button: Int) -> Shortcut {
+        Shortcut(keyCode: 0, modifiers: 0, isModifierKey: false, name: mouseButtonName(button), mouseButton: button)
+    }
+    static let mousePresets: [Shortcut] = [mouse(2), mouse(3), mouse(4)]
+    static func mouseButtonName(_ b: Int) -> String {
+        switch b {
+        case 2: return "Middle mouse button"
+        case 3: return "Mouse “back” button"
+        case 4: return "Mouse “forward” button"
+        default: return "Mouse button \(b + 1)"
+        }
+    }
 
     /// Which CGEventFlags bit a modifier keyCode toggles.
     static func flag(forModifierKeyCode code: UInt16) -> CGEventFlags? {

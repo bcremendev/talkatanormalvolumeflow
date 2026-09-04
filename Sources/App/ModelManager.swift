@@ -15,9 +15,42 @@ struct WhisperModel: Identifiable, Hashable {
         WhisperModel(id: "small.en", name: "Small (English)", sizeMB: 488, englishOnly: true, note: "Recommended: fast and accurate"),
         WhisperModel(id: "small", name: "Small (Multilingual)", sizeMB: 488, englishOnly: false, note: "Any language, slightly less accurate in English"),
         WhisperModel(id: "medium.en", name: "Medium (English)", sizeMB: 1530, englishOnly: true, note: "More accurate, 2-3x slower"),
+        WhisperModel(id: "medium", name: "Medium (Multilingual)", sizeMB: 1530, englishOnly: false, note: "More accurate, 2-3x slower"),
         WhisperModel(id: "large-v3-turbo", name: "Large v3 Turbo (Multilingual)", sizeMB: 1620, englishOnly: false, note: "Best accuracy, needs 16GB+ RAM"),
     ]
     static func byId(_ id: String) -> WhisperModel { all.first { $0.id == id } ?? all[1] }
+
+    /// Plain-English tiers shown to the user. The actual model is picked for their Mac and language.
+    enum Tier: String, CaseIterable, Identifiable {
+        case standard, accurate
+        var id: String { rawValue }
+        var title: String { self == .standard ? "Standard" : "Extra accurate" }
+        var blurb: String {
+            switch self {
+            case .standard: return "Fast and accurate for everyday talking. Text appears in about a second. Right for almost everyone."
+            case .accurate: return "Better with strong accents, unusual names and noisy rooms. Takes about twice as long."
+            }
+        }
+    }
+
+    /// Whether a model is "extra accurate" (medium / large) vs standard (base / small).
+    var tier: Tier { id.hasPrefix("medium") || id.hasPrefix("large") ? .accurate : .standard }
+
+    /// The right model for this Mac. Large v3 Turbo is the best "accurate" pick but needs 16 GB of memory; smaller Macs get Medium.
+    static func pick(tier: Tier, englishOnly: Bool) -> WhisperModel {
+        switch tier {
+        case .standard: return byId(englishOnly ? "small.en" : "small")
+        case .accurate:
+            if Machine.memoryGB >= 16 { return byId("large-v3-turbo") }
+            return byId(englishOnly ? "medium.en" : "medium")
+        }
+    }
+    /// Tiers that will run well on this Mac. Anything under 8 GB stays on Standard.
+    static var availableTiers: [Tier] { Machine.memoryGB >= 8 ? Tier.allCases : [.standard] }
+}
+
+enum Machine {
+    static let memoryGB: Int = Int(ProcessInfo.processInfo.physicalMemory / (1 << 30))
 }
 
 /// Downloads and tracks Whisper model files in Application Support.
@@ -26,6 +59,8 @@ final class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate
 
     @Published var progress: [String: Double] = [:]
     @Published var errors: [String: String] = [:]
+    /// Model to switch to once its download finishes (so the current model keeps working meanwhile).
+    @Published var pendingSwitch: String?
 
     private lazy var session: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -57,7 +92,19 @@ final class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate
         task.resume()
     }
 
+    /// Switches to `model` right away if it's on disk, otherwise downloads it first and switches when done.
+    func use(_ model: WhisperModel) {
+        if isDownloaded(model) {
+            pendingSwitch = nil
+            Settings.shared.data.modelId = model.id
+        } else {
+            pendingSwitch = model.id
+            download(model)
+        }
+    }
+
     func cancel(_ model: WhisperModel) {
+        if pendingSwitch == model.id { pendingSwitch = nil }
         session.getAllTasks { tasks in
             for t in tasks where self.tasks[t.taskIdentifier]?.id == model.id { t.cancel() }
         }
@@ -96,6 +143,10 @@ final class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate
             self.progress[model.id] = nil
             if let failure { self.errors[model.id] = failure }
             self.tasks[downloadTask.taskIdentifier] = nil
+            if failure == nil, self.pendingSwitch == model.id {
+                self.pendingSwitch = nil
+                Settings.shared.data.modelId = model.id
+            }
             self.objectWillChange.send()
         }
     }
@@ -107,6 +158,7 @@ final class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate
             if (error as NSError).code != NSURLErrorCancelled {
                 self.errors[model.id] = error.localizedDescription
             }
+            if self.pendingSwitch == model.id { self.pendingSwitch = nil }
             self.tasks[task.taskIdentifier] = nil
         }
     }
