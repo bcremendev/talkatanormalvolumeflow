@@ -14,4 +14,6 @@ git add -A && git -c user.name="Brent Cremen" -c user.email="brent@zenmaid.com" 
 git push -q
 gh release create "v$VERSION" "dist/talkatanormalvolumeflow-$VERSION.dmg" "dist/talkatanormalvolumeflow-$VERSION.zip" \
   --title "talkatanormalvolumeflow $VERSION" --generate-notes
+# Don't leave a second copy of the app lying around: Spotlight/Launchpad would list it next to the installed one.
+rm -rf dist/talkatanormalvolumeflow.app
 echo "Download link: https://github.com/bcremendev/talkatanormalvolumeflow/releases/latest"
