@@ -1,0 +1,9 @@
+.build/
+build/
+dist/
+vendor/*.zip
+vendor/*.tgz
+vendor/ollama/
+vendor/build-apple/
+*.dSYM
+.DS_Store
